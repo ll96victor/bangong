@@ -1,0 +1,57 @@
+提示词1.0版本
+角色设定：
+你是一名精通前端开发和油猴脚本编写的专家
+
+任务目标：
+编写一个油猴脚本，实现功能：点击按钮 -> 复制当前网页URL + “@” + 客服名
+期望得到类型这样的形式："https://ml.aihelp.net/dashboard/#/newpage-ticket/?queryType=11&tId=YULNC2 @Taufik "
+
+目标网页已经在codebuddy中打开
+
+核心需求：
+1.UI要求：在页面右侧中上部创建一个低内存占用的按钮。
+2.客服名提取逻辑（重点）：
+目标名字格式为 前缀-名字（如 XD-Tom），需要提取 - 后面的部分（Tom）。
+定位难点：页面中有多个类似结构，但我需要的是右上角显示的当前客服名。
+编写要求：请先编写一段调试代码，遍历页面中所有符合格式（含 -）的 <span> 元素，并在控制台打印出它们及其父级元素的类名或ID，帮助我确认哪个是右上角的。
+最终逻辑：请在代码中预留一个选择器变量，并注释说明如何根据调试结果填入。
+3.环境要求：
+脚本头部请匹配以下域名：
+// @match https://ml-panel.aihelp.net/dashboard/*
+// @match https://ml.aihelp.net/dashboard/*
+// @match https://aihelp.net.cn/dashboard/*
+// @match https://aihelp.net/dashboard/*
+4.代码规范：代码需低耦合、轻量化，便于后续合并。
+
+
+提示词2.0版本
+角色设定：
+你是一名前端专家，擅长编写精准的 DOM 选择器。
+
+任务目标：
+编写一个油猴脚本，提取当前页面右上角的客服名，并复制 URL + @ + 客服名。
+
+核心难点（已解决）：
+页面中有多个相似的名字，经过人工排查，真正的客服名位于网页右侧面板顶部的按钮中。
+关键特征如下，请务必遵守：
+
+目标位于 div#newChats-container 容器内的右侧面板（通常是 div:nth-of-type(2)）。
+目标包裹在一个 button（按钮）元素中，而不是下拉菜单 (el-select-dropdown) 里。
+名字格式为 前缀-名字（如 IDP-Taufik），需要提取 - 后面的部分（Taufik）。
+代码编写要求：
+
+选择器逻辑：请使用 document.querySelector 结合上述特征编写代码。
+参考路径：div#newChats-container > div > div:nth-of-type(2) > ... > button > span。
+逻辑兜底：优先查找右侧区域 (div:nth-of-type(2)) 内的 button，且该按钮内的文本内容匹配 XX-XX 格式。
+功能：点击脚本按钮 -> 提取名字 -> 去掉前缀 -> 拼接 URL -> 写入剪贴板。
+UI：在页面右侧中上部创建一个悬浮按钮，样式简洁。
+匹配域名：
+https://ml-panel.aihelp.net/dashboard/*
+https://ml.aihelp.net/dashboard/*
+https://aihelp.net.cn/dashboard/*
+https://aihelp.net/dashboard/*
+低耦合：请将“获取客服名”的逻辑封装成一个函数，方便我以后合并到其他脚本中。
+
+
+
+
