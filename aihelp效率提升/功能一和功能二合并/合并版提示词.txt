@@ -1,0 +1,243 @@
+你能否来优化5.5版本的脚本。
+5.5脚本写的时候，不知道网页的“内部描述”和“描述”以及它们之间文本的结构的实际案例，所以复制部分的代码功能没问题，但逻辑有点问题。可能影响了代码后续关于ServerID的提取和判断。
+请你根据文档内容来优化脚本，优化5.5版本脚本的复制内容部分，如果复制内容有图片，复制后需要转为链接的形式。
+优化ServerID的提取，尽管网页中包含"ServerID ="且后面接了4位或者5位阿拉伯数字，但有时会提示不匹配。鉴于脚本每次执行都会提取“内部描述”和“描述”之间的文本，而ServerID就是在内部描述”和“描述”之间的文本中，可以在其中进行查找和匹配。其他的功能你可以根据文档需求觉得是否更改，大多应该是不用更改的，需要你判断。
+
+
+
+脚本需求和其他信息如下：
+
+
+
+目标网站：https://ml-panel.aihelp.net/dashboard/#/manual/tasks?searchType=7&SmartViewID=25285&SmartViewType=4
+
+
+功能需求：
+
+需求一：和老版脚本一样可以实现点击后复制"内部描述"到"描述"之间的文本。
+
+需求一的补充: 
+复制状态栏小一点，可拖到，点击状态栏就复制。
+
+需求二： 和老版脚本一样可以实现ServerID更改“任务标题 *”下方文本框中文本的前缀。（用户需要在工单列表点击特定模块才会出现“任务标题 *”，所以需要一个判断，注重性能不要太占内存，或许检测HTML网页的变化是一种方法？）
+
+需求二的补充1：
+默认配置设置(可以设置一个用户配置区（放置 fullServer 等变量）)：
+由于后面会多次调用两个名为"fullserver"和"testserver"的变量，我们先给这俩变量赋值。在给这俩变量赋值前，我们先给定两个参考的列表fullserverlists和testserverlists，用户可能会随机从列表中给变量赋值。用户可能隔一段时间会更改赋值。此处给定列表，是因为后续会从"fullserver"和"testserver"的变量的值中提取数字，为了正则表达式提取准确的数字，先给定可能值的范围。
+fullserverlists = ["【2.1.40全服】：", "【2.1.18全服】：", "【40.2全服】：", "【18.2全服】："]
+testserverlists = ["【40.2测服】：", "【2.1.52测服】：", "【1.9.88测服】：", "【2.1.50测服】："]
+暂时赋值如下，用户后续一段时间会手动修复赋值：
+fullserver = "【2.1.40全服】："
+testserver = "【40.2测服】："
+
+需求二的补充2：
+内部描述下方的文本，一般会有"ServerID ="，比如"ServerID = 6207,"，比如“ServerID = 57107,”比如“ServerID = 12545”，有时可能就是"ServerID = ,"这种情况，或者压根没有"ServerID"。
+字符串"ServerID = "位于"内部描述"到"描述"之间的文本。如果"内部描述"到"描述"有且只有1个"ServerID = "，且"ServerID = "后接了4位或5位阿拉伯数字，数字后有逗号，才进行需求二的根据ServerID更改标题的前缀的功能。反之，则不必运行需求二相关的功能。
+如果"ServerID = "后面紧跟的值开头两个数字是57，不管57后面的数字是什么，把testserver的值赋值给leftheading；反之，则把fullserver的值赋值给leftheading。
+
+需求二的补充3：
+提取leftheading的小数点的值，并赋值给变量faxiandiedai。比如，如果leftheading的值是"【2.1.40全服】："，则提取的数字是2.1.40；如果leftheading的值是"【40.2测服】："，则提取的数字是40.2。提取后的值，我们会在后续的需求中用到。最好单独写个函数，耦合性好。
+
+需求二的补充4：
+若"任务标题 *"下方的文本框处于可编辑的状态且"任务标题 *"下方的文本框的有中文冒号或者英文冒号，才进行尝试替换的功能。如果第一个冒号之前的文本包含MCGG或mcgg（/mcgg/i（不区分大小写）），则不做任何判断和操作，不进行替换。
+如果第一个冒号之前的文本不包含MCGG或mcgg（/mcgg/i（不区分大小写）），将第一个冒号和第一个冒号前面的所有文本一次性替换为变量leftheading所对应的值。替换完成后，如果用户手动更改了冒号前面的文本，也不必再改回去。
+
+需求三：和老版脚本一样可以实现翻译冒号之后的文本并插入冒号和原文之间（翻译一天至多用150次，网络可用时调用免费的AI翻译或者谷歌翻译或者deepl翻译，或者中国大陆可用的免费翻译。有时可以访问谷歌翻译，有时无法访问，所以要包含无法访问谷歌翻译，但可以访问其他中文翻译的情况）
+
+需求三的补充1：
+若冒号之后的文本本身就包含中文，则不翻译，只要有中文，不论冒号后面的文本是否有其他语种，都不翻译。
+
+需求三的补充2：
+翻译功能最好做一个单独的函数，翻译出中文结果最好快一点，不要超过6秒，可以多放几个免费可用的翻译方式。这里的翻译用不用申请API的。后续可能会申请用API的翻译，但这次不用。
+
+需求四：
+如果用户点击"渠道*"标签下的文本框时会弹出一个可以填写文本的搜索框，根据是哪一个变量赋值给leftheading来填写文本。如果在需求二中，testserver的值赋值给leftheading，则在弹出的搜索框直接输入"测服"，反之填"全服"，这里只填一次，用户手动更改就不管。如果用户不点击"渠道*"标签下的文本框，就不运行需求四相关的功能。
+
+需求四的补充：
+不用判断当前界面是否出现了"渠道*"标签。因为“任务标题 *”和"渠道*"和"发现迭代 *"和"创建人*"是同时出现的。只要前面的需求二判断了任务标题 *”出现了，其他这些标签也一定出现。这里的耦合性一定要好，因为后续可能要加东西
+
+需求五：
+如果用户点击"发现迭代 *"标签下的文本框时会弹出一个可以填写文本的搜索框，直接输入需求二中缓存的变量faxiandiedai的值。这里只填一次，用户手动更改就不管。如果用户不点击"渠道*"标签下的文本框，就不运行需求四相关的功能。
+
+
+请你：
+1）给出元数据头部（@name、@match、@grant、@run-at）。
+2）用简单的 JS + GM API 实现。
+3）每一块逻辑用中文写一行注释。
+4）要求脚本的耦合性好，不会对网页造成很大的卡顿和内存占用。
+5）
+6）当用户在网页切换了不同的工单界面时，重复需求一和需求二和需求三和需求四和需求五的执行
+7）输出时只给我一个代码块，不要任何解释。”
+
+
+
+参考
+// @author       ll96victor (Optimized by AI)
+// @match        https://ml-panel.aihelp.net/dashboard/*
+// @match        https://ml.aihelp.net/dashboard/*
+// @match        https://aihelp.net.cn/dashboard/*
+// @match        https://aihelp.net/dashboard/*
+// @exclude      *://*/dashboard/#/newpage-ticket*
+
+
+注意事项：
+1.你面对的是一个单页但聚合了多个列表的网址，URL不改变，但用户点击时，会出现不同内容。因此，可能需要在每次内容变化时重新扫描。建议通过检测特定元素，如工单ID的内容变化来判断是否切换了工单，工单ID界面最上方，类似20260123000927一串数字
+2.标签元素不是<label>，而是<p class="title-of-work-order">
+3.页面结构是特殊的"标签+容器"模式：
+<p class="title-of-work-order">发现迭代*</p>
+<p class="detail">
+  <div class="el-select ...">...</div>  <!-- 下拉框在这里！ -->
+</p>
+下拉框在兄弟容器的内部
+
+4.你面对的是一个单页但聚合了多个列表的网址，URL不改变，但用户点击时，会出现不同内容。建议通过检测特定元素，如工单ID的内容变化来判断是否切换了工单，工单ID界面最上方，类似20260123000927一串数字。
+
+5.当用户在当前工单网址的某一个工单点击时，这个工单列表可能有三种状态，每次变化都会有HTML变化。
+
+这三种状态是：
+未点击关联第三方
+已点击关联第三方
+在关联第三方下方点击某些选项下方的文本框后弹出了搜索框。
+
+就是网页列表中的某一个列表界面，一开始是不显示关联第三方的。当用户点击了关联第三方图标，才会显示关联第三方相关的HTML。关联第三方中包括了任务标题，发现迭代，渠道等选项，点击这些选项下方的文本框后会弹出搜索框。
+
+在未点击关联第三方图标的状态下，你或许可以在当前HTML界面找到关联第三方中包括的任务标题，发现迭代，渠道等选项，但这些选项一定是不可编辑的。
+只有在已点击关联第三方情况下，且用户没有点击关联（这里的关联是网址本身的按钮，类似提交信息，与脚本功能无关，可忽略），关联第三方中包括的任务标题和发现迭代和渠道等选项才是可编辑的。
+
+6.关联第三方图标加载时间大概8~15秒，不是跟工单列表网页的某一个工单界面同时加载出来的。此外，用户点击关联第三方图标也要个2~3秒。
+
+
+7.在网页点击其他工单时，会弹出提示“正在加载...”
+
+
+8.HTML网页一些元素的补充：
+在HTML中，任务标题的输入框：
+* 类名：el-input__inner
+* placeholder：请输入任务标题
+
+在HTML中找到了"关联第三方"的相关按钮：
+* 类名：el-button
+* 文本：关联第三方
+
+9.关联第三方的任务标题和发现迭代和渠道的网页完整结构：
+<!-- 发现迭代字段的完整结构 -->
+<el-form-item label="发现迭代">
+  <label class="el-form-item__label">
+    <span class="el-form-item__label__content">发现迭代</span>
+    <span class="el-form-item__label__content">必填</span>
+  </label>
+
+  <div class="el-form-item__content">
+    <el-select class="el-select" popper-class="">
+      <div class="el-select__wrapper">
+        <!-- 只读输入框（用于显示） -->
+        <div class="el-select__input">
+          <input 
+            type="text" 
+            readonly="" 
+            class="el-input__inner" 
+            placeholder="请选择"
+          >
+        </div>
+
+        <!-- 实际的 input（隐藏的） -->
+        <input type="hidden">
+
+        <!-- 下拉图标和选项列表 -->
+        <span class="select-trigger">...</span>
+        <div class="el-select-dropdown el-popper">
+          <ul class="el-select-dropdown__list">
+            <li class="el-select-dropdown__item">
+              <span>选项1</span>
+            </li>
+            ...
+          </ul>
+        </div>
+      </div>
+    </el-select>
+  </div>
+</el-form-item>
+<!-- 渠道字段的结构（类似） -->
+<el-form-item label="渠道">
+  <label class="el-form-item__label">
+    <span class="el-form-item__label__content">渠道</span>
+  </label>
+
+  <div class="el-form-item__content">
+    <el-select class="el-select" popper-class="">
+      <div class="el-select__wrapper">
+        <div class="el-select__input">
+          <input 
+            type="text" 
+            readonly="" 
+            class="el-input__inner" 
+            placeholder="请选择渠道"
+          >
+        </div>
+        ...
+      </div>
+    </el-select>
+  </div>
+</el-form-item>
+<!-- 创建人字段的结构（输入框） -->
+<el-form-item label="创建人">
+  <label class="el-form-item__label">
+    <span class="el-form-item__label__content">创建人</span>
+  </label>
+
+  <div class="el-form-item__content">
+    <el-input class="is-disabled el-input--suffix">
+      <!-- 内部 input -->
+      <input 
+        type="text" 
+        class="el-input__inner" 
+        disabled="disabled"
+        placeholder="自动获取"
+      >
+
+      <!-- 后缀图标 -->
+      <span class="el-input__suffix">
+        <i class="el-icon-user"></i>
+      </span>
+
+
+
+| 区域 | 状态1（未点击） | 状态2（已关联第三方） | 状态3（搜索框弹出） | 脚本关键判断点 |
+|------|-----------------|----------------------|---------------------|------------------|
+| 任务标题 | `<input id="task-title" class="form-control" value="...">`<br>✅ 始终存在 | 同左 | 同左 | ✅ 稳定锚点：<br>`#task-title` 始终可用，值不变 |
+| 渠道 | `<select id="channel-select" disabled>`<br>（灰色不可选） | `<select id="channel-select" class="enabled">`<br>✅ 选项动态加载 | 同状态2 | ⚠️ 状态切换标志：<br>`!document.getElementById('channel-select').disabled` → 进入STATE_2 |
+| 发现迭代 | ❌ 完全不存在<br>（无按钮/无容器） | ✅ 按钮出现：<br>`<button class="btn-iteration" data-testid="find-iteration-btn">发现迭代</button>`<br>（无aria-expanded） | ✅ 按钮+激活态+搜索框：<br>• 按钮：`<button ... aria-expanded="true" class="active">`<br>• 搜索框容器：`<div class="iteration-search-container" style="display: block;">`<br>• 搜索输入框：`<input class="search-input" placeholder="搜索迭代版本...">`<br>• 结果列表：`<ul class="iteration-list"><li data-version="2.1.40.1146.1">...</li>...</ul>` | 🔥 核心判断三要素：<br>1️⃣ 按钮是否存在 → 区分STATE_1<br>2️⃣ 按钮`aria-expanded="true"` → STATE_3入口<br>3️⃣ `.iteration-search-container` 的`display`值 → 精确确认STATE_3 |
+
+10.“内部描述”和“描述”以及它们之间文本的结构，以一部分。
+a.字段用途推断
+"描述" 很可能是用户提交的原始问题描述，包含用户输入的原始内容
+"内部描述" 很可能是客服人员编辑后的版本，客服人员修正了用户的拼写错误
+b."内部描述"和"描述"是两个不同的字段，用于存储相同问题的两种版本，但内部描述后会多一些信息如，客诉生成时间到Other important info的内容（有时“Other important info （eg: history log, necessary picture, video links sent in chat) :”之后也会接文本或者图片）。
+
+c.实例参考，下列三引号直接的文本就是“内部描述”和“描述”之间的文本。
+'''Консультация по геймплею
+О чем вы хотели бы проконсультироваться?§ : Здравствуйте
+У меня проблема с приобретением облика Авроры
+Когда нажимаю получить облик мне пишит то что событие завершено хоть я об этом событий не знал
+Связанные изображения : ---------------------------------------------------------
+客诉生成时间=2026-01-23 00:07:31(GMT+3),
+UID = 1638052751,
+ServerID = 6832,
+Platform = android ,
+App identifier = com.mobilelegends.mi
+Language = 2,
+CountryCode = RU(GMT+03:00) ,
+Device = Xiaomi 25062RN2DY,
+AppVersion = 22.1.41.11465,
+SDK = 5.6.1
+Ticket ID= Y87X27
+【 https://ml-panel.aihelp.net/dashboard/#/newpage-ticket/?queryType=11&tId=Y87X27 】
+Other important info （eg: history log, necessary picture, video links sent in chat) :
+
+'''
+
+
+
+
+
+
