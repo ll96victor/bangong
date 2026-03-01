@@ -1,0 +1,7 @@
+*前景*
+在工单界面处理工单时，经常遇到需要清除头像冷却时间的情况
+
+*用户的操作*
+第一步：在工单列表界面复制玩家的账号信息，比如UID = 1186053970, ServerID = 13814,
+第二步：打开GM工具“https://gm.moba.youngjoygame.com:8090/#/customer/banTool”，输入指令 ClearAvatarCD UID=1186053970 ServerID=13814
+第三步：玩家的头像冷却时间将被清除
