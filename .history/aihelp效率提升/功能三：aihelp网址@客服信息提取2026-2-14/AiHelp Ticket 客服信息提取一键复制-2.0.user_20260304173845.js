@@ -113,7 +113,7 @@
                 }
             }
 
-            const feishuOrder = `飞书单：${linkHref} 的子单`;
+            const feishuOrder = `飞书单：${linkHref}  的子单`;
             if (timeText) {
                 log('提取成功:', `${feishuOrder}\n${timeText}`);
                 return `${feishuOrder}\n${timeText}`;

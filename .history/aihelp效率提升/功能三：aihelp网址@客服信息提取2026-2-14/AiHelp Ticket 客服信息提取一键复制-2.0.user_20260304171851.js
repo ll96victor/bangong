@@ -51,37 +51,43 @@
         try {
             log('开始提取飞书单...');
             
-            let feishuLink = null;
-            const allLinks = document.querySelectorAll('a');
-            log('页面总链接数量:', allLinks.length);
+            let noteItem = document.querySelector('.note-item');
+            if (!noteItem) {
+                noteItem = document.querySelector('.chat-note-wrap');
+            }
+            if (!noteItem) {
+                log('未找到 note-item 或 chat-note-wrap');
+                const allDivs = document.querySelectorAll('div');
+                for (const div of allDivs) {
+                    if (div.innerText && div.innerText.includes('飞书单：')) {
+                        noteItem = div;
+                        log('通过文本搜索找到飞书单容器');
+                        break;
+                    }
+                }
+            }
+            if (!noteItem) {
+                log('仍未找到飞书单容器');
+                return null;
+            }
+
+            log('找到容器，开始查找链接...');
+            const allLinks = noteItem.querySelectorAll('a');
+            log('容器内链接数量:', allLinks.length);
             
+            let feishuLink = null;
             for (const link of allLinks) {
                 const href = link.getAttribute('href') || '';
+                log('检查链接:', href);
                 if (href.includes('feishu.cn')) {
                     feishuLink = link;
-                    log('找到飞书链接:', href);
+                    log('找到飞书链接');
                     break;
                 }
             }
             
             if (!feishuLink) {
-                log('未找到飞书链接，尝试搜索文本...');
-                const allDivs = document.querySelectorAll('div');
-                for (const div of allDivs) {
-                    if (div.innerText && div.innerText.includes('飞书单：')) {
-                        log('找到包含飞书单的div:', div.innerText.substring(0, 100));
-                        const linkInDiv = div.querySelector('a');
-                        if (linkInDiv) {
-                            feishuLink = linkInDiv;
-                            log('在div中找到链接');
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            if (!feishuLink) {
-                log('仍未找到飞书链接');
+                log('未找到飞书链接');
                 return null;
             }
 
@@ -90,30 +96,21 @@
             log('飞书链接(清理后):', linkHref);
 
             let timeText = '';
-            let parent = feishuLink.parentElement;
-            for (let i = 0; i < 10 && parent; i++) {
-                const timeSpan = parent.querySelector('.note-time');
-                if (timeSpan) {
-                    const fullTimeText = timeSpan.textContent.trim();
-                    log('时间文本:', fullTimeText);
-                    const pipeIndex = fullTimeText.indexOf('|');
-                    timeText = pipeIndex !== -1 ? fullTimeText.substring(0, pipeIndex).trim() : fullTimeText;
-                    break;
-                }
-                parent = parent.parentElement;
+            let timeSpan = noteItem.querySelector('.note-time');
+            if (!timeSpan && noteItem.parentElement) {
+                timeSpan = noteItem.parentElement.querySelector('.note-time');
             }
-            
-            if (!timeText) {
-                const timeSpan = document.querySelector('.note-time');
-                if (timeSpan) {
-                    const fullTimeText = timeSpan.textContent.trim();
-                    log('全局时间文本:', fullTimeText);
-                    const pipeIndex = fullTimeText.indexOf('|');
-                    timeText = pipeIndex !== -1 ? fullTimeText.substring(0, pipeIndex).trim() : fullTimeText;
-                }
+            if (!timeSpan) {
+                timeSpan = document.querySelector('.note-time');
+            }
+            if (timeSpan) {
+                const fullTimeText = timeSpan.textContent.trim();
+                log('时间文本:', fullTimeText);
+                const pipeIndex = fullTimeText.indexOf('|');
+                timeText = pipeIndex !== -1 ? fullTimeText.substring(0, pipeIndex).trim() : fullTimeText;
             }
 
-            const feishuOrder = `飞书单：${linkHref} 的子单`;
+            const feishuOrder = `飞书单：${linkHref}  的子单`;
             if (timeText) {
                 log('提取成功:', `${feishuOrder}\n${timeText}`);
                 return `${feishuOrder}\n${timeText}`;

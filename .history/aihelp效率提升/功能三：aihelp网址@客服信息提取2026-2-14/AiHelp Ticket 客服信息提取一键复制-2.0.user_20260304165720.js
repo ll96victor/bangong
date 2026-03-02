@@ -49,77 +49,32 @@
 
     function extractFeishuOrder() {
         try {
-            log('开始提取飞书单...');
-            
-            let feishuLink = null;
-            const allLinks = document.querySelectorAll('a');
-            log('页面总链接数量:', allLinks.length);
-            
-            for (const link of allLinks) {
-                const href = link.getAttribute('href') || '';
-                if (href.includes('feishu.cn')) {
-                    feishuLink = link;
-                    log('找到飞书链接:', href);
-                    break;
-                }
-            }
-            
-            if (!feishuLink) {
-                log('未找到飞书链接，尝试搜索文本...');
-                const allDivs = document.querySelectorAll('div');
-                for (const div of allDivs) {
-                    if (div.innerText && div.innerText.includes('飞书单：')) {
-                        log('找到包含飞书单的div:', div.innerText.substring(0, 100));
-                        const linkInDiv = div.querySelector('a');
-                        if (linkInDiv) {
-                            feishuLink = linkInDiv;
-                            log('在div中找到链接');
-                            break;
+            const allElements = document.querySelectorAll('*');
+            for (let el of allElements) {
+                if (el.innerText && el.innerText.includes('飞书单：')) {
+                    const children = el.querySelectorAll('*');
+                    if (children.length > 20) continue;
+
+                    const text = el.innerText;
+                    const startIndex = text.indexOf('飞书单：');
+                    if (startIndex === -1) continue;
+
+                    let searchText = text.substring(startIndex);
+                    let pipeIndex = searchText.indexOf('|');
+                    if (pipeIndex !== -1) {
+                        searchText = searchText.substring(0, pipeIndex).trim();
+                    } else {
+                        let newlineIndex = searchText.indexOf('\n');
+                        if (newlineIndex !== -1) {
+                            searchText = searchText.substring(0, newlineIndex).trim();
                         }
+                    }
+
+                    if (searchText.length > 10) {
+                        return searchText;
                     }
                 }
             }
-            
-            if (!feishuLink) {
-                log('仍未找到飞书链接');
-                return null;
-            }
-
-            let linkHref = feishuLink.getAttribute('href') || '';
-            linkHref = linkHref.replace(/[`\s]/g, '').trim();
-            log('飞书链接(清理后):', linkHref);
-
-            let timeText = '';
-            let parent = feishuLink.parentElement;
-            for (let i = 0; i < 10 && parent; i++) {
-                const timeSpan = parent.querySelector('.note-time');
-                if (timeSpan) {
-                    const fullTimeText = timeSpan.textContent.trim();
-                    log('时间文本:', fullTimeText);
-                    const pipeIndex = fullTimeText.indexOf('|');
-                    timeText = pipeIndex !== -1 ? fullTimeText.substring(0, pipeIndex).trim() : fullTimeText;
-                    break;
-                }
-                parent = parent.parentElement;
-            }
-            
-            if (!timeText) {
-                const timeSpan = document.querySelector('.note-time');
-                if (timeSpan) {
-                    const fullTimeText = timeSpan.textContent.trim();
-                    log('全局时间文本:', fullTimeText);
-                    const pipeIndex = fullTimeText.indexOf('|');
-                    timeText = pipeIndex !== -1 ? fullTimeText.substring(0, pipeIndex).trim() : fullTimeText;
-                }
-            }
-
-            const feishuOrder = `飞书单：${linkHref} 的子单`;
-            if (timeText) {
-                log('提取成功:', `${feishuOrder}\n${timeText}`);
-                return `${feishuOrder}\n${timeText}`;
-            }
-            log('提取成功(无时间):', feishuOrder);
-            return feishuOrder;
         } catch (e) {
             console.error('飞书单提取失败:', e);
         }
