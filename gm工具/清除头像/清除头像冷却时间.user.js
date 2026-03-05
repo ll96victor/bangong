@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         清除头像冷却时间
 // @namespace    http://tampermonkey.net/
-// @version      1.1.0
+// @version      1.1.1
 // @description  自动清除玩家头像冷却时间 - 从工单界面提取信息并自动操作GM工具
 // @author       AI Assistant
 // @match        https://ml-panel.aihelp.net/*
@@ -134,9 +134,10 @@
     function saveCrossDomainData(key, data) {
         try {
             GM_setValue(key, JSON.stringify(data));
-            log('跨域数据保存成功: ' + key);
+            // 只输出到控制台，避免调用 log() 导致无限循环
+            console.log('[清除头像] 跨域数据保存成功:', key);
         } catch (e) {
-            log('跨域数据存储失败: ' + e.message, 'error');
+            console.error('[清除头像] 跨域数据存储失败:', e.message);
         }
     }
 
@@ -153,7 +154,7 @@
                 return JSON.parse(data);
             }
         } catch (e) {
-            log('跨域数据读取失败: ' + e.message, 'error');
+            console.error('[清除头像] 跨域数据读取失败:', e.message);
         }
         return defaultValue;
     }
@@ -165,9 +166,10 @@
     function deleteCrossDomainData(key) {
         try {
             GM_deleteValue(key);
-            log('跨域数据已删除: ' + key);
+            // 只输出到控制台，避免调用 log() 导致无限循环
+            console.log('[清除头像] 跨域数据已删除:', key);
         } catch (e) {
-            log('跨域数据删除失败: ' + e.message, 'error');
+            console.error('[清除头像] 跨域数据删除失败:', e.message);
         }
     }
 
@@ -181,7 +183,7 @@
         try {
             localStorage.setItem(key, JSON.stringify(data));
         } catch (e) {
-            log('存储数据失败: ' + e.message, 'error');
+            console.error('[清除头像] 存储数据失败:', e.message);
         }
     }
 
@@ -198,7 +200,7 @@
                 return JSON.parse(data);
             }
         } catch (e) {
-            log('读取存储数据失败: ' + e.message, 'error');
+            console.error('[清除头像] 读取存储数据失败:', e.message);
         }
         return defaultValue;
     }
@@ -211,7 +213,7 @@
         try {
             localStorage.removeItem(key);
         } catch (e) {
-            log('删除存储数据失败: ' + e.message, 'error');
+            console.error('[清除头像] 删除存储数据失败:', e.message);
         }
     }
 
