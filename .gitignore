@@ -1,0 +1,112 @@
+# ================================
+# 1. 操作系统生成的垃圾文件
+# ================================
+# macOS (苹果系统) 自动生成的属性文件，记录文件夹显示选项
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows (视窗系统) 缩略图和配置文件
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux/Nano 编辑器的备份文件
+*~
+
+# ================================
+# 2. 编辑器与 IDE 配置 (强烈建议忽略)
+# ================================
+# VS Code 的工作区配置 (每个人习惯不同，不要共享)
+.vscode/
+# VS Code 的本地历史记录插件 (你之前遇到的情况)
+.history/
+
+# JetBrains 系列编辑器
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ================================
+# 3. 编程语言的依赖包 (非常重要！)
+# ================================
+# Node.js (前端/全端开发) - 这里面可能包含几万个文件，必须忽略
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python (后端/数据分析) - 虚拟环境和缓存
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+.venv/
+
+# Java - 编译后的 class 文件和打包文件
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+
+# Go - 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# ================================
+# 4. 编译产物与打包目录
+# ================================
+# 前端打包后的 dist 目录 (通常通过构建命令自动生成)
+dist/
+build/
+out/
+
+# 日志文件
+logs/
+*.log
+
+# 临时文件
+*.tmp
+*.temp
+
+# ================================
+# 5. 敏感信息与安全配置 (绝对不能传！)
+# ================================
+# 环境变量文件 (通常存放数据库密码、API密钥)
+.env
+.env.local
+.env.*.local
+
+# 敏感的配置文件
+config.local.json
+secrets.json
+credentials.json
+
+# 密钥文件
+*.pem
+*.key
+id_rsa
+
+# ================================
+# 6. 压缩包与媒体文件 (可选)
+# ================================
+# 压缩包 (源码管理不应该包含压缩包)
+*.zip
+*.rar
+*.7z
+*.tar.gz
+
+# 图片/视频 (如果项目不是纯图片站，大文件建议用图床)
+# *.jpg
+# *.png
+# *.mp4
