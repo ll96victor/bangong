@@ -51,21 +51,85 @@
 *   明确关键的输入、输出和约束条件。
 *   如果需求模糊不清，优先提出澄清性问题（除非处于"静默模式"）。
 
-### 3.3 方案设计
+### 3.3 代码生成前交互规范（重要）
+**在生成或修改代码之前，必须与用户进行充分交互，确保需求清晰。**
+
+#### 3.3.1 必须收集的关键信息
+在开始编码前，必须向用户确认以下信息：
+
+| 信息类型 | 说明 | 示例问题 |
+|----------|------|----------|
+| **功能目标** | 明确要实现什么功能 | "您希望这个脚本实现什么核心功能？" |
+| **目标页面** | 脚本运行的页面URL或特征 | "脚本需要在哪个页面运行？请提供页面URL或页面特征。" |
+| **触发方式** | 功能如何被触发 | "功能是通过按钮点击、快捷键还是自动触发？" |
+| **输入数据** | 需要用户提供什么数据 | "需要用户提供哪些输入？如关键词、配置项等。" |
+| **输出结果** | 期望的输出形式 | "结果如何呈现？复制到剪贴板、显示弹窗还是写入页面？" |
+| **参考文档** | 是否有需求文档或参考文档 | "是否有需求文档或参考文档？请提供文档路径或内容。" |
+
+#### 3.3.2 交互流程模板
+```
+1. 分析用户需求 → 列出需要确认的关键信息
+2. 向用户提问 → 使用清晰的表格或列表展示问题
+3. 等待用户回复 → 收集必要信息
+4. 确认理解 → 复述需求确认理解正确
+5. 开始编码 → 在用户确认后才开始生成代码
+```
+
+#### 3.3.3 交互示例
+> **AI**: 我理解您需要开发一个油猴脚本。在开始编码前，请确认以下信息：
+> 
+> | 序号 | 问题 | 您的回答 |
+> |------|------|----------|
+> | 1 | 脚本需要在哪个页面运行？ | （请提供URL或页面特征） |
+> | 2 | 核心功能是什么？ | （请描述功能目标） |
+> | 3 | 功能如何触发？ | （按钮/快捷键/自动） |
+> | 4 | 是否有参考文档？ | （如有请提供路径） |
+> 
+> 请提供以上信息，我将据此设计实现方案。
+
+### 3.4 代码生成前评估规范（重要）
+**在生成或修改代码之前，必须进行三项评估，确保代码符合所有要求。**
+
+#### 3.4.1 评估检查清单
+
+| 评估项 | 检查内容 | 通过标准 |
+|--------|----------|----------|
+| **rules.md合规性** | 代码是否符合本文档的所有规范要求 | 符合任务等级对应的编码规范 |
+| **用户需求一致性** | 代码是否满足用户需求文档或文字描述 | 功能完整、边界情况处理到位 |
+| **参考文档一致性** | 代码是否符合用户提供的其他参考文档 | 遵循参考文档中的设计规范 |
+
+#### 3.4.2 评估流程
+```
+1. 读取rules.md → 确认适用的规范项
+2. 分析用户需求 → 提取功能点和约束条件
+3. 读取参考文档（如有） → 提取设计规范和约束
+4. 设计方案 → 确保方案同时满足以上三项
+5. 生成代码 → 在代码中体现所有规范要求
+```
+
+#### 3.4.3 评估声明模板
+在生成代码前，必须向用户声明评估结果：
+
+> **评估声明**：
+> - ✅ rules.md合规性：已确认符合[任务等级]规范，包括[具体规范项]
+> - ✅ 用户需求一致性：已确认满足[功能需求]，处理了[边界情况]
+> - ✅ 参考文档一致性：已参考[文档名称]，遵循了[设计规范]
+
+### 3.5 方案设计
 *   概述解决思路（例如："我将使用贪婪算法..." 或 "我将拆分为三个模块..."）。
 *   列出计划使用的核心库或工具。
 *   **追求优雅**：对于非平凡的变更，暂停并问"有没有更优雅的方式？"；如果修复感觉很粗糙，应重新考虑实现优雅的解决方案。对于简单、明显的修复，跳过这一步——不要过度设计。
 
-### 3.4 代码实现
+### 3.6 代码实现
 *   根据任务等级，遵循对应严格程度的编码规范。
 *   包含必要的导入语句、错误处理和类型定义。
 
-### 3.5 进度跟踪与文档
+### 3.7 进度跟踪与文档
 *   随着进展标记项目完成。
 *   每一步提供高级概述，解释变更。
 *   在 `tasks/todo.md` 中添加评论部分。
 
-### 3.6 使用说明与解释
+### 3.8 使用说明与解释
 *   提供简要的运行指南（依赖安装、命令行参数等）。
 *   解释核心逻辑或潜在的边界情况。
 
@@ -216,8 +280,50 @@
 
 #### 场景识别
 *   在脚本入口处，必须基于 `window.location.href` 或关键 DOM 特征进行**页面场景识别**。
+*   **URL检查时机**：URL检查必须在脚本初始化的最开始执行，**在创建任何UI元素（如状态栏、悬浮窗）之前**。
+*   **快速退出机制**：如果URL包含不需要脚本运行的关键词（如 `ticket`、`tickets`），应直接退出整个脚本，不执行后续代码。
+*   **精确匹配**：使用精确的URL匹配逻辑，只在目标页面（如包含 `task?orderId` 或 `tasks?searchType` 的页面）运行脚本。
+*   **批量模式检测原则**：检测批量处理模式时，应优先检测**页面文本特征**而非按钮元素。按钮检测容易产生误判（如父元素包含目标文本、多个相似按钮等），而文本特征更稳定可靠。
+    *   *错误示例*：检测"编辑"按钮来判断批量模式 - 容易误判
+    *   *正确示例*：检测"已选择"和"选择全部"文本同时存在来判断批量模式
+*   **集中化配置模式**：对于需要精确匹配的业务规则（如特定标题格式），应使用集中化的配置对象，而非分散的正则表达式。便于维护和修改。
+    *   *示例*：
+    ```javascript
+    const MCGG_CONFIG = {
+        patterns: ['【MCGG】'],  // 精确匹配中文括号格式
+        caseSensitive: false
+    };
+    function isMCGGTitle(title) {
+        return MCGG_CONFIG.patterns.some(p => 
+            MCGG_CONFIG.caseSensitive ? title.includes(p) : title.toLowerCase().includes(p.toLowerCase())
+        );
+    }
+    ```
 *   使用布尔变量（如 `isSceneA`）显式标记当前页面类型，提升代码可读性。
 *   *示例*：使用 `String.prototype.includes` 检查 URL 关键参数（如 `task?orderId`）作为区分依据。
+
+*   **参考实现**（基于 `AiHelp Task 信息提取一键复制.user` 脚本）：
+    ```javascript
+    // 最优先：URL检查
+    const currentUrl = window.location.href;
+    if (currentUrl.includes('ticket')) {
+        console.log('[脚本] URL包含ticket，跳过脚本加载');
+        return; // 直接退出，不创建UI
+    }
+    
+    // 判定当前页面是否为目标页面
+    function isTargetPage() {
+        return currentUrl.includes('task?orderId') || currentUrl.includes('tasks?searchType');
+    }
+    
+    if (!isTargetPage()) {
+        console.log('[脚本] 非目标页面，跳过脚本加载');
+        return; // 直接退出
+    }
+    
+    console.log('[脚本] 目标页面，开始加载脚本');
+    // 后续代码：创建UI、绑定事件等
+    ```
 
 #### 逻辑分流与解耦
 *   采用 **"判断-分发"模式**：将页面识别逻辑与业务处理逻辑分离。
@@ -236,6 +342,35 @@
     *   高频事件（scroll、resize、input）必须使用防抖或节流。
     *   防抖适用于连续触发只需执行一次的场景（如搜索建议）。
     *   节流适用于需要固定频率执行的场景（如滚动加载）。
+*   **版本号管理规范**：
+    *   **版本号格式**：采用语义化版本号 `主版本号.次版本号.修订号`（如 `1.1.0`）。
+    *   **版本号递增规则**：
+        *   每次修改代码后，修订号自动加1（如 `1.1.0` → `1.1.1`）。
+        *   新增功能时，次版本号加1，修订号归零（如 `1.1.5` → `1.2.0`）。
+        *   重大架构变更时，主版本号加1，次版本号和修订号归零（如 `1.5.3` → `2.0.0`）。
+    *   **文件名同步更新**：每次版本更新后，脚本文件名必须同步更新版本号（如 `script_v1.1.0.user.js` → `script_v1.1.1.user.js`）。
+    *   **更新说明要求**：每次版本更新必须在脚本头部或更新日志中补充更新说明，格式如下：
+        ```javascript
+        // ==UserScript==
+        // @version      1.1.1
+        // ...
+        // ==/UserScript==
+        
+        /**
+         * 更新日志：
+         * v1.1.1 (2026-03-11)
+         * - 修复：XXX问题
+         * - 优化：XXX性能
+         * 
+         * v1.1.0 (2026-03-10)
+         * - 新增：XXX功能
+         */
+        ```
+    *   **版本号更新时机**：仅在对话中实际修改了代码时才更新版本号，纯讨论或需求澄清不触发版本更新。
+*   **状态栏与日志面板规范**：
+    *   如果脚本包含状态栏和日志面板功能，必须参考《油猴脚本状态栏规范.md》文档。
+    *   新增功能必须同步到日志面板，确保用户可以在日志面板中查看操作记录。
+    *   日志输出格式：`[模块名] 操作描述`，如 `[搜索] 开始搜索关键词...`。
 
 #### SPA 架构适配规范
 *   **框架双向绑定突破**：直接修改 `input.value` 对 React/Vue 无效，必须使用原生 setter：
@@ -287,6 +422,132 @@
         }
     }
     ```
+*   **SPA抽屉/弹窗容器限定**：当页面存在抽屉或弹窗时，必须限定DOM搜索范围，避免误操作主页面元素：
+    ```javascript
+    // 错误：全局搜索可能找到列表页元素
+    const commentBox = document.querySelector('.meego-comment');
+    
+    // 正确：优先在抽屉容器内搜索
+    let searchRoot = document;
+    const drawer = document.querySelector('.meego-drawer-content-wrapper');
+    if (drawer) {
+        searchRoot = drawer;
+    }
+    const commentBox = searchRoot.querySelector('.meego-comment');
+    ```
+*   **激活前后DOM结构差异**：点击激活类操作必须点击激活前就存在的元素，而非激活后才出现的元素：
+    ```javascript
+    // 激活前：内部是placeholder
+    // <div class="story-edit-group"><div class="comment-placeholder">请输入评论</div></div>
+    
+    // 激活后：内部变成富文本编辑器
+    // <div class="story-edit-group focused editing"><div class="rich-text">...</div></div>
+    
+    // 正确：点击激活前存在的placeholder
+    const placeholder = storyEditGroup.querySelector('.comment-placeholder');
+    if (placeholder) placeholder.click();
+    
+    // 错误：点击激活后才存在的编辑器（激活前不存在）
+    const editor = storyEditGroup.querySelector('.zone-container'); // 此时为null
+    ```
+*   **等待编辑器完全加载**：激活后需要等待内部元素加载完成，不能只检查激活状态：
+    ```javascript
+    async function waitForEditorReady(commentBox, maxRetries = 10, interval = 300) {
+        for (let i = 0; i < maxRetries; i++) {
+            const storyEditGroup = commentBox.querySelector('.story-edit-group.focused.editing');
+            const aceLine = storyEditGroup?.querySelector('.ace-line[data-node="true"]');
+            const editor = storyEditGroup?.querySelector('.zone-container[data-slate-editor="true"]');
+            
+            // 必须同时满足：已激活 + 内部元素已加载
+            if (storyEditGroup && aceLine && editor) {
+                return true;
+            }
+            await new Promise(r => setTimeout(r, interval));
+        }
+        return false;
+    }
+    ```
+
+#### 多元素精确定位规范
+
+当页面上存在多个相同属性的元素时，必须采用精确的定位策略：
+
+**1. 通过Label文字定位（推荐）**
+```javascript
+// 方法：查找包含特定label文字的表单项，然后定位其输入框
+const allFormItems = document.querySelectorAll('.el-form-item');
+for (const item of allFormItems) {
+    const labelEl = item.querySelector('.el-form-item__label');
+    if (labelEl && labelEl.textContent.includes('目标标签名')) {
+        const input = item.querySelector('input');
+        if (input && isElementAvailable(input)) {
+            return input;
+        }
+    }
+}
+```
+
+**2. 通过位置距离选择（下拉选项）**
+```javascript
+// 当有多个匹配项时，选择距离触发元素最近的那个
+const targetRect = triggerElement.getBoundingClientRect();
+let minDistance = Infinity;
+let closestOption = null;
+
+for (const option of options) {
+    const rect = option.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+        const distance = Math.abs(rect.top - targetRect.top);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestOption = option;
+        }
+    }
+}
+```
+
+**3. 精确文本匹配原则**
+```javascript
+// ❌ 错误：包含匹配会误选父元素
+if (element.textContent.includes('提交')) { ... }
+
+// ✅ 正确：精确匹配只选择目标元素
+if (element.textContent.trim() === '提交') { ... }
+```
+
+#### UI加载等待策略
+
+**弹窗加载等待**
+```javascript
+// 点击按钮后，等待弹窗完全加载
+await clickButton('编辑');
+await sleep(1500); // 弹窗UI变化需要时间
+
+// 等待元素位置稳定
+let targetElement = null;
+for (let i = 0; i < 10; i++) {
+    targetElement = document.querySelector(selector);
+    if (targetElement) {
+        const rect = targetElement.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            break; // 元素已稳定
+        }
+    }
+    await sleep(200);
+}
+```
+
+**滚动隐藏内容**
+```javascript
+// 滚动弹窗到底部，让隐藏选项可见
+const scrollContainers = document.querySelectorAll('.el-dialog__body, .el-drawer__body');
+for (const container of scrollContainers) {
+    if (container.scrollHeight > container.clientHeight) {
+        container.scrollTop = container.scrollHeight;
+        await sleep(300);
+    }
+}
+```
 
 #### 悬浮窗 UI 开发规范
 *   **内存优化原则**：
@@ -482,6 +743,10 @@
 *   [ ] 是否验证了元素可用性（非仅存在性）？
 *   [ ] 是否有全局状态锁防止重复执行？
 *   [ ] 拖拽与点击是否正确区分（5px 阈值）？
+*   [ ] **快速点击是否正确实现回退逻辑？**
+    *   快速点击成功后，是否等待足够时间让下拉框/弹窗出现？
+    *   快速点击失败后，是否执行原来的等待逻辑？
+    *   是否区分"优化现有脚本"和"创建新脚本"两种场景？
 
 **完成前验证**：
 *   [ ] 永远不要在证明其功能正常之前标记任务完成。

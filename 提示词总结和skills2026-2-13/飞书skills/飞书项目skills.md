@@ -1,4 +1,7 @@
-# 飞书项目脚本开发经验总结
+# Role: 企业级油猴脚本专家
+
+## Profile
+你是一位精通前端逆向工程、DOM 操作和油猴脚本开发的专家。你专门处理企业级项目系统（如禅道，飞书项目等）的自动化需求，拥有丰富的实战经验。
 
 ## 1. SPA抽屉详情页评论框调试案例
 
@@ -384,4 +387,161 @@ autoCommentLogger.log('查找评论框');
 Console命令结果：
 document.querySelector('.xxx') → [结果]
 document.querySelector('.yyy').classList → [结果]
+```
+
+---
+
+## 6. 快速点击机制经验总结
+
+### 6.1 问题背景
+
+在优化油猴脚本点击速度时，发现以下问题：
+1. 快速点击成功后，下拉框/弹窗可能需要时间加载
+2. 快速点击失败后，需要执行原来的等待逻辑
+3. 不同场景需要不同的策略
+
+### 6.2 核心教训
+
+#### 教训1：快速点击成功 ≠ 操作完成
+
+**问题**：快速点击成功点击了输入框，但下拉框还没出现。
+
+**错误代码**：
+```javascript
+await ToolUtil.fastClick(inputElement, { fastDelay: 100 });
+// 立即查找下拉框，可能找不到！
+const dropdown = document.querySelector('.dropdown');
+```
+
+**正确代码**：
+```javascript
+const clickSuccess = await ToolUtil.fastClick(inputElement, { fastDelay: 100 });
+if (clickSuccess) {
+    // 快速点击成功，但需要等待下拉框出现
+    await ToolUtil.sleep(500);
+}
+const dropdown = document.querySelector('.dropdown');
+```
+
+#### 教训2：快速点击失败后必须执行回退逻辑
+
+**问题**：快速点击失败后只等待了时间，没有再次尝试点击。
+
+**错误代码**：
+```javascript
+async fastClick(element, options) {
+    if (element && this.isElementAvailable(element)) {
+        element.click();
+        return true;
+    }
+    await this.sleep(fallbackDelay);
+    return false;  // ❌ 只返回 false，没有再次尝试点击！
+}
+```
+
+**正确代码**：
+```javascript
+async fastClick(element, options) {
+    if (element && this.isElementAvailable(element)) {
+        element.click();
+        return true;
+    }
+    
+    // 快速点击失败，执行回退逻辑
+    await this.sleep(fallbackDelay);
+    
+    // 再次检查元素是否可用
+    if (element && this.isElementAvailable(element)) {
+        element.click();
+        return true;
+    }
+    
+    return false;
+}
+```
+
+### 6.3 两种场景的策略
+
+#### 场景A：优化现有脚本
+
+**策略**：快速点击 + 回退机制
+
+```javascript
+// 快速点击失败后，使用原来的等待逻辑
+async fastClick(element, options = {}) {
+    const { fastDelay = 100, fallbackDelay = 300 } = options;
+    
+    // 快速尝试
+    if (element && this.isElementAvailable(element)) {
+        element.click();
+        await this.sleep(fastDelay);
+        return true;
+    }
+    
+    // 回退：等待后再次尝试
+    await this.sleep(fallbackDelay);
+    if (element && this.isElementAvailable(element)) {
+        element.click();
+        await this.sleep(fallbackDelay);
+        return true;
+    }
+    
+    return false;
+}
+```
+
+#### 场景B：创建新脚本
+
+**策略**：同时提供快速点击和保守点击两种方式
+
+```javascript
+const ToolUtil = {
+    // 快速点击（适合熟练用户）
+    async fastClick(element, options = {}) {
+        const { delay = 100 } = options;
+        if (element && this.isElementAvailable(element)) {
+            element.click();
+            await this.sleep(delay);
+            return true;
+        }
+        return false;
+    },
+    
+    // 保守点击（适合新手用户，更稳定）
+    async safeClick(element, options = {}) {
+        const { delay = 500 } = options;
+        await this.sleep(delay); // 先等待
+        if (element && this.isElementAvailable(element)) {
+            element.click();
+            await this.sleep(delay);
+            return true;
+        }
+        return false;
+    }
+};
+```
+
+### 6.4 等待时间策略
+
+| 场景 | 快速模式 | 回退模式 | 说明 |
+|------|---------|---------|------|
+| 点击输入框 | 100ms | 800ms | 下拉框需要时间加载 |
+| 点击下拉选项 | 100ms | 500ms | 选项加载较快 |
+| 点击提交按钮 | 100ms | 500ms | 按钮通常已存在 |
+
+### 6.5 调试日志规范
+
+```javascript
+// 好的日志：包含状态信息
+console.log('[快速点击] 元素已存在，立即点击');
+logger.log('快速点击成功');
+
+console.log('[快速点击] 元素不可用，等待后重试');
+logger.log('快速点击失败，使用回退逻辑');
+
+console.log('[回退点击] 元素已可用，执行点击');
+logger.log('回退点击成功');
+
+// 不好的日志：只有简单描述
+console.log('点击成功');
 ```
