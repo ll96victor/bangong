@@ -1,6 +1,22 @@
-2026/03/05-13:28:08.813 9268 Reusing MANIFEST C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表\chrome_automation\Default\IndexedDB\https_project.feishu.cn_0.indexeddb.leveldb/MANIFEST-000001
-2026/03/05-13:28:08.814 9268 Recovering log #3
-2026/03/05-13:28:08.829 9268 Reusing old log C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表\chrome_automation\Default\IndexedDB\https_project.feishu.cn_0.indexeddb.leveldb/000003.log 
-2026/03/05-13:28:17.961 9268 Level-0 table #5: started
-2026/03/05-13:28:17.980 9268 Level-0 table #5: 3109903 bytes OK
-2026/03/05-13:28:17.982 9268 Delete type=0 #3
+2026/03/13-09:58:32.031 5cb4 Reusing MANIFEST C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表2026-3-5\chrome_automation\Default\IndexedDB\https_project.feishu.cn_0.indexeddb.leveldb/MANIFEST-000001
+2026/03/13-09:58:32.031 5cb4 Recovering log #20
+2026/03/13-09:58:32.047 5cb4 Reusing old log C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表2026-3-5\chrome_automation\Default\IndexedDB\https_project.feishu.cn_0.indexeddb.leveldb/000020.log 
+2026/03/13-09:58:37.516 14b4 Level-0 table #29: started
+2026/03/13-09:58:37.536 14b4 Level-0 table #29: 3176180 bytes OK
+2026/03/13-09:58:37.537 14b4 Delete type=0 #20
+2026/03/13-09:58:38.723 14b4 Compacting 1@1 + 5@2 files
+2026/03/13-09:58:38.743 14b4 Generated table #30@1: 672 keys, 2121034 bytes
+2026/03/13-09:58:38.758 14b4 Generated table #31@1: 571 keys, 2109274 bytes
+2026/03/13-09:58:38.776 14b4 Generated table #32@1: 586 keys, 2121521 bytes
+2026/03/13-09:58:38.791 14b4 Generated table #33@1: 592 keys, 2110918 bytes
+2026/03/13-09:58:38.804 14b4 Generated table #34@1: 567 keys, 2109642 bytes
+2026/03/13-09:58:38.822 14b4 Generated table #35@1: 599 keys, 2111462 bytes
+2026/03/13-09:58:38.831 14b4 Generated table #36@1: 7638 keys, 357840 bytes
+2026/03/13-09:58:38.831 14b4 Compacted 1@1 + 5@2 files => 13041691 bytes
+2026/03/13-09:58:38.832 14b4 compacted to: files[ 0 0 7 0 0 0 0 ]
+2026/03/13-09:58:38.832 14b4 Delete type=2 #22
+2026/03/13-09:58:38.832 14b4 Delete type=2 #23
+2026/03/13-09:58:38.832 14b4 Delete type=2 #24
+2026/03/13-09:58:38.832 14b4 Delete type=2 #25
+2026/03/13-09:58:38.832 14b4 Delete type=2 #26
+2026/03/13-09:58:38.832 14b4 Delete type=2 #29

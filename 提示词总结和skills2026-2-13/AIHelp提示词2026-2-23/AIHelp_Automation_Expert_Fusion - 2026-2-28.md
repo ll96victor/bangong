@@ -1206,3 +1206,124 @@ logger.log('回退点击成功');
 // 不好的日志：只有简单描述
 console.log('点击成功');
 ```
+
+### 点击事件调试经验总结（2026-03-13 更新）
+
+#### 问题背景
+
+在调试批量分配功能时，遇到以下问题：
+- 日志显示"快速点击成功"，但下拉框没有出现
+- 用户报告点击L/N/W/X按钮后，受理人下拉框未弹出
+- 问题定位走了弯路：一开始以为是选项匹配逻辑错误，实际是点击事件未正确触发
+
+#### 核心教训
+
+**教训1：日志 ≠ 真实状态**
+
+```
+日志显示"快速点击成功" ≠ 元素被正确点击
+日志显示"操作完成" ≠ 业务逻辑正确执行
+```
+
+**教训2：点击事件的"假成功"现象**
+
+在 Vue/ElementUI 等 SPA 框架中，以下情况会导致点击"假成功"：
+
+| 现象 | 原因 | 解决方案 |
+|------|------|----------|
+| `element.click()` 执行了，但下拉框没出现 | 框架需要完整事件序列 | `mousedown → mouseup → click` |
+| `fastClick` 日志成功，但UI无变化 | 快速模式跳过了某些事件 | 使用完整事件序列或增加延迟 |
+| 点击后立即查找元素找不到 | 下拉框渲染需要时间 | 点击后等待 800-1200ms |
+
+**教训3：调试优先级法则**
+
+```
+第一优先级：确认点击是否触发了UI变化
+第二优先级：确认元素查找是否正确
+第三优先级：确认选项匹配逻辑
+```
+
+**错误示例**：跳过第一优先级，直接去修第三优先级（本次调试的错误）
+
+#### 正确的点击实现
+
+**方案1：完整事件序列（推荐）**
+
+```javascript
+/**
+ * 使用完整事件序列触发下拉框
+ * 适用于 ElementUI 的 el-select 等组件
+ */
+function triggerClick(element) {
+    element.focus();
+    
+    const rect = element.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    
+    ['mousedown', 'mouseup', 'click'].forEach(type => {
+        element.dispatchEvent(new MouseEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: cx,
+            clientY: cy,
+            button: 0
+        }));
+    });
+}
+
+// 使用示例
+triggerClick(assigneeInput);
+await sleep(1200); // 等待下拉框出现
+```
+
+**方案2：普通点击 + 足够等待时间**
+
+```javascript
+/**
+ * 简单但可靠的方式
+ */
+async function safeClick(element, waitAfter = 1000) {
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await sleep(300);
+    element.focus();
+    element.click();
+    await sleep(waitAfter);
+}
+```
+
+#### 何时使用哪种方案
+
+| 场景 | 推荐方案 | 等待时间 |
+|------|----------|----------|
+| ElementUI el-select 下拉框 | 完整事件序列 | 1000-1200ms |
+| 普通按钮点击 | 普通 click() | 200-300ms |
+| 弹窗内的输入框 | 完整事件序列 | 800-1000ms |
+| 下拉选项选择 | 普通 click() | 300-500ms |
+
+#### 用户提示词优化建议
+
+后续遇到类似问题，建议用户这样提示：
+
+```
+# 问题现象
+[具体描述] 点击XX后，YY没有出现/没有变化
+
+# 日志信息
+[粘贴日志]
+
+# 怀疑原因（可选）
+可能是点击没有正确触发 / 可能是等待时间不够
+
+# 建议（可选）
+参考XX章节的规范 / 尝试使用YY方法
+```
+
+**对比**：
+
+| 原始提示 | 更有效的提示 |
+|---------|-------------|
+| "点击X时有问题" | "下拉框没有出现" |
+| 日志只显示最终结果 | 日志 + 具体哪个步骤失败 |
+| 没有指出怀疑原因 | 指出"快速点击可能有问题" |

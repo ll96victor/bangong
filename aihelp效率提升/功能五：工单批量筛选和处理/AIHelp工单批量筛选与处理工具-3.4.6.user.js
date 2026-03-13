@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AIHelp工单批量筛选与处理工具
 // @namespace    http://tampermonkey.net/
-// @version      3.4.6
+// @version      3.5.3
 // @description  AIHelp工单批量筛选与批量处理工具，提供一键快捷操作，新增BUG自动解决功能，全面优化点击速度
 // @author       ll96victor
 // @match        https://ml-panel.aihelp.net/dashboard/*
@@ -14,6 +14,63 @@
     'use strict';
 
     /**
+     * 3.5.3 更新说明：
+     * 
+     * 【Bug修复】
+     * 1. 修复批量分配功能中点击输入框后下拉框未出现的问题
+     *    - 原因：普通 click() 在某些 Vue/ElementUI 组件上无法正确触发下拉框
+     *    - 解决：使用完整的事件序列（mousedown → mouseup → click）触发下拉框
+     *    - 参考：rules.md 事件模拟规范
+     * 2. 移除提交按钮的 fastClick，改用普通 click()
+     * 
+     * 3.5.2 更新说明：
+     * 
+     * 【Bug修复】
+     * 1. 修复批量分配功能中快速点击导致下拉框未出现的问题
+     *    - 原因：fastClick 快速点击模式在某些情况下无法正确触发下拉框
+     *    - 解决：改用普通 click() 方法，增加等待时间确保下拉框渲染
+     *    - 影响范围：L/N/W/X 四个分配按钮
+     * 
+     * 3.5.1 更新说明：
+     * 
+     * 【Bug修复】
+     * 1. 修复批量分配功能中点击X按钮时选项匹配错误的问题
+     *    - 原因：使用 includes 进行模糊匹配可能匹配到错误的选项
+     *    - 解决：优先使用精确匹配，找不到时再使用包含匹配
+     *    - 影响范围：L/N/W/X 四个分配按钮
+     * 
+     * 3.5.0 更新说明：
+     * 
+     * 【Bug修复】
+     * 1. 修复BUG自动解决功能中内部回复输入到错误位置的问题
+     *    - 原因：查找 TinyMCE 编辑器时直接查找第一个可见的编辑器
+     *    - 解决：通过 el-form-item 的 label 精确定位"内部回复"对应的编辑器
+     *    - 采用三级查找策略：label精确定位 -> contentEditable回退 -> 全局TinyMCE回退
+     * 
+     * 3.4.9 更新说明：
+     * 
+     * 【Bug修复】
+     * 1. 修复快速点击模式下"批量处理"功能点击工单状态输入框后下拉框未出现的问题
+     *    - 原因：快速点击工单状态输入框后，下拉框未完全渲染就开始查找搜索框
+     *    - 解决：点击工单状态输入框后，统一等待800ms确保下拉框完全渲染
+     * 2. 同步修复"BUG自动解决"功能中相同的问题
+     * 
+     * 3.4.8 更新说明：
+     * 
+     * 【Bug修复】
+     * 1. 修复快速点击模式下"批量处理"功能点击发送奖励后邮件选项未找到的问题
+     *    - 原因：快速点击发送奖励输入框后，下拉框未完全渲染就开始查找邮件选项
+     *    - 解决：点击发送奖励输入框后，统一等待800ms确保下拉框完全渲染
+     * 2. 同步修复"BUG自动解决"功能中相同的问题
+     * 
+     * 3.4.7 更新说明：
+     * 
+     * 【Bug修复】
+     * 1. 修复快速点击模式下"批量分配受理人"功能下拉框未正确显示的问题
+     *    - 原因：快速点击成功后只等待500ms，下拉框未完全渲染
+     *    - 解决：统一使用800ms等待时间，确保下拉框完全渲染后再进行后续操作
+     * 2. 同步修复"批量解决"功能中相同的问题
+     * 
      * 3.4.6 更新说明：
      * 
      * 【Bug修复】
@@ -706,17 +763,29 @@
 
                 // Step 3: 点击工单受理人输入框
                 console.log('Step 3: 点击工单受理人输入框');
+                logger.log('点击工单受理人输入框');
                 assigneeInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                await ToolUtil.sleep(100);
+                await ToolUtil.sleep(300);
                 assigneeInput.focus();
-                const clickSuccess = await ToolUtil.fastClick(assigneeInput, { fastDelay: 100, fallbackDelay: 800, logger });
-                console.log('已点击工单受理人输入框');
+                
+                // 使用完整的事件序列触发下拉框
+                const rect = assigneeInput.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                ['mousedown', 'mouseup', 'click'].forEach(type => {
+                    assigneeInput.dispatchEvent(new MouseEvent(type, {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: cx,
+                        clientY: cy,
+                        button: 0
+                    }));
+                });
+                console.log('已点击工单受理人输入框（完整事件序列）');
 
                 // 点击后等待下拉框出现
-                if (clickSuccess) {
-                    // 快速点击成功，但需要等待下拉框出现
-                    await ToolUtil.sleep(500);
-                }
+                await ToolUtil.sleep(1200);
 
                 // Step 4: 在搜索框输入受理人名称
                 console.log(`Step 4: 在搜索框输入 ${config.id}`);
@@ -762,7 +831,7 @@
 
                 // Step 5: 点击下拉选项
                 console.log(`Step 5: 点击下拉选项 ${config.id}`);
-                await ToolUtil.sleep(100);
+                await ToolUtil.sleep(300);
 
                 const assigneeOptions = document.querySelectorAll('li');
                 let foundOption = null;
@@ -785,7 +854,8 @@
                 if (foundOption) {
                     console.log('选择距离最近的选项, 距离:', minOptionDistance);
                     foundOption.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    await ToolUtil.fastClick(foundOption, { fastDelay: 100, fallbackDelay: 500, logger });
+                    await ToolUtil.sleep(200);
+                    foundOption.click();
                     console.log(`已选择 ${config.id}`);
                 } else {
                     logger.error(`未找到受理人选项: ${config.id}`);
@@ -860,7 +930,8 @@
 
                 if (submitBtn) {
                     submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    await ToolUtil.fastClick(submitBtn, { fastDelay: 100, fallbackDelay: 500, logger });
+                    await ToolUtil.sleep(200);
+                    submitBtn.click();
                     console.log('已点击提交按钮');
                 } else {
                     logger.error('未找到提交按钮');
@@ -932,6 +1003,9 @@
                 statusInput.focus();
                 await ToolUtil.fastClick(statusInput, { fastDelay: 100, fallbackDelay: 800, logger });
                 console.log('已点击工单状态输入框');
+
+                // 点击后等待下拉框出现 - 统一使用较长等待时间确保下拉框完全渲染
+                await ToolUtil.sleep(800);
 
                 // Step 4: 在搜索框输入"已解决"
                 console.log(`Step 4: 在搜索框输入 ${config.status}`);
@@ -1257,6 +1331,9 @@
                 await ToolUtil.sleep(100);
                 statusInput.focus();
                 await ToolUtil.fastClick(statusInput, { fastDelay: 100, fallbackDelay: 800, logger });
+                
+                // 点击后等待下拉框出现 - 统一使用较长等待时间确保下拉框完全渲染
+                await ToolUtil.sleep(800);
 
                 // Step 13: 在搜索框输入"已解决"
                 console.log('Step 13: 在搜索框输入已解决');
@@ -1329,11 +1406,8 @@
                 }
                 await ToolUtil.sleep(500);
 
-                // 查找内部回复输入框（参考aihelp效率提升\整体新增功能四_提交后自动回复already submitted\工单助手与Task客服信息提取合并版 6.4.1 批量筛选模式检测.js 6.4.1 版本实现）
+                // 查找内部回复输入框 - 通过 el-form-item 的 label 精确定位
                 let internalReplyInput = null;
-
-                // 直接查找 TinyMCE 编辑器容器（不依赖对话框）
-                // 批量编辑弹窗是 el-popover，iframe 不在 el-dialog 内
                 let attempts = 0;
                 const maxAttempts = 10;
 
@@ -1341,80 +1415,86 @@
                     attempts++;
                     console.log(`第 ${attempts} 次尝试查找内部回复输入框...`);
 
-                    // 1. 直接查找 TinyMCE 编辑器容器
-                    const tinymceContainers = document.querySelectorAll('.tox.tox-tinymce');
-                    console.log(`找到 ${tinymceContainers.length} 个 TinyMCE 编辑器容器`);
-
-                    for (const container of tinymceContainers) {
-                        // 检查容器是否可见
-                        const rect = container.getBoundingClientRect();
-                        if (rect.width === 0 || rect.height === 0) {
-                            console.log('TinyMCE 容器不可见，跳过');
-                            continue;
-                        }
-
-                        console.log('找到可见的 TinyMCE 编辑器容器');
-
-                        // 2. 在编辑器容器内查找 iframe
-                        const iframe = container.querySelector('iframe');
-                        if (iframe) {
-                            console.log('找到 iframe:', iframe.className);
-                            try {
-                                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                                if (iframeDoc && iframeDoc.body) {
-                                    const body = iframeDoc.body;
-                                    console.log('iframe body id:', body.id);
-                                    console.log('iframe body contentEditable:', body.contentEditable);
-
-                                    if (body.id === 'tinymce' || body.contentEditable === 'true') {
-                                        internalReplyInput = body;
-                                        console.log('找到 TinyMCE iframe 内的 body 元素');
-                                        break;
-                                    }
-                                }
-                            } catch (e) {
-                                console.log('无法访问 iframe 内容:', e.message);
-                            }
-                        }
-                    }
-
-                    // 3. 如果没找到 TinyMCE，尝试查找其他富文本编辑器
-                    if (!internalReplyInput) {
-                        const allIframes = document.querySelectorAll('iframe');
-                        console.log(`文档中共有 ${allIframes.length} 个 iframe`);
-
-                        for (const iframe of allIframes) {
-                            try {
-                                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                                if (iframeDoc && iframeDoc.body) {
-                                    const body = iframeDoc.body;
-                                    if (body.id === 'tinymce' || body.contentEditable === 'true') {
-                                        const rect = iframe.getBoundingClientRect();
-                                        if (rect.width > 0 && rect.height > 0) {
-                                            internalReplyInput = body;
-                                            console.log('通过遍历 iframe 找到 TinyMCE body');
-                                            break;
+                    // 方法1：通过 el-form-item 的 label 精确定位"内部回复"
+                    const allFormItems = document.querySelectorAll('.el-form-item');
+                    for (const item of allFormItems) {
+                        const labelEl = item.querySelector('.el-form-item__label');
+                        if (labelEl && labelEl.textContent.includes('内部回复')) {
+                            console.log('找到"内部回复"表单项');
+                            
+                            // 在该表单项内查找 TinyMCE 编辑器容器
+                            const tinymceContainer = item.querySelector('.tox.tox-tinymce');
+                            if (tinymceContainer) {
+                                const rect = tinymceContainer.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0) {
+                                    console.log('在"内部回复"表单项内找到 TinyMCE 编辑器容器');
+                                    
+                                    const iframe = tinymceContainer.querySelector('iframe');
+                                    if (iframe) {
+                                        try {
+                                            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                                            if (iframeDoc && iframeDoc.body) {
+                                                const body = iframeDoc.body;
+                                                if (body.id === 'tinymce' || body.contentEditable === 'true') {
+                                                    internalReplyInput = body;
+                                                    console.log('找到"内部回复"对应的 TinyMCE iframe body');
+                                                    break;
+                                                }
+                                            }
+                                        } catch (e) {
+                                            console.log('无法访问 iframe 内容:', e.message);
                                         }
                                     }
                                 }
-                            } catch (e) {
-                                // 跨域 iframe，跳过
                             }
                         }
                     }
 
-                    // 4. 如果还没找到，尝试查找 contentEditable 元素
+                    // 方法2：如果方法1没找到，尝试查找表单项内的 contentEditable 元素
                     if (!internalReplyInput) {
-                        const allEditables = document.querySelectorAll('[contenteditable="true"]');
-                        console.log(`找到 ${allEditables.length} 个 contentEditable 元素`);
+                        for (const item of allFormItems) {
+                            const labelEl = item.querySelector('.el-form-item__label');
+                            if (labelEl && labelEl.textContent.includes('内部回复')) {
+                                const editables = item.querySelectorAll('[contenteditable="true"]');
+                                for (const el of editables) {
+                                    const rect = el.getBoundingClientRect();
+                                    if (rect.width > 0 && rect.height > 0) {
+                                        internalReplyInput = el;
+                                        console.log('找到"内部回复"表单项内的 contentEditable 元素');
+                                        break;
+                                    }
+                                }
+                                if (internalReplyInput) break;
+                            }
+                        }
+                    }
 
-                        for (const el of allEditables) {
-                            const rect = el.getBoundingClientRect();
-                            if (rect.width > 0 && rect.height > 0) {
-                                if (el.id && el.id.includes('tinymce')) {
-                                    internalReplyInput = el;
-                                    console.log('找到可见的 tinymce contentEditable 元素');
-                                    break;
+                    // 方法3：回退逻辑 - 查找所有可见的 TinyMCE 编辑器（保持兼容性）
+                    if (!internalReplyInput) {
+                        console.log('使用回退逻辑查找 TinyMCE 编辑器...');
+                        const tinymceContainers = document.querySelectorAll('.tox.tox-tinymce');
+                        console.log(`找到 ${tinymceContainers.length} 个 TinyMCE 编辑器容器`);
+
+                        for (const container of tinymceContainers) {
+                            const rect = container.getBoundingClientRect();
+                            if (rect.width === 0 || rect.height === 0) {
+                                continue;
+                            }
+
+                            const iframe = container.querySelector('iframe');
+                            if (iframe) {
+                                try {
+                                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                                    if (iframeDoc && iframeDoc.body) {
+                                        const body = iframeDoc.body;
+                                        if (body.id === 'tinymce' || body.contentEditable === 'true') {
+                                            internalReplyInput = body;
+                                            console.log('通过回退逻辑找到 TinyMCE body');
+                                            break;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.log('无法访问 iframe 内容:', e.message);
                                 }
                             }
                         }
@@ -1486,6 +1566,9 @@
                     rewardInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     await ToolUtil.fastClick(rewardInput, { fastDelay: 100, fallbackDelay: 800, logger });
                     console.log('已点击发送奖励输入框');
+                    
+                    // 点击后等待下拉框出现 - 统一使用较长等待时间确保下拉框完全渲染
+                    await ToolUtil.sleep(800);
                 } else {
                     logger.error('未找到发送奖励输入框');
                     throw new Error('未找到发送奖励输入框');
@@ -1838,6 +1921,9 @@
                 statusInput.focus();
                 await ToolUtil.fastClick(statusInput, { fastDelay: 100, fallbackDelay: 800, logger });
                 console.log('已点击工单状态输入框');
+                
+                // 点击后等待下拉框出现 - 统一使用较长等待时间确保下拉框完全渲染
+                await ToolUtil.sleep(800);
             } else {
                 throw new Error('未找到工单状态输入框');
             }
@@ -1955,6 +2041,9 @@
                 rewardInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 await ToolUtil.fastClick(rewardInput, { fastDelay: 100, fallbackDelay: 800, logger });
                 console.log('已点击发送奖励输入框');
+                
+                // 点击后等待下拉框出现 - 统一使用较长等待时间确保下拉框完全渲染
+                await ToolUtil.sleep(800);
             } else {
                 throw new Error('未找到发送奖励输入框');
             }
@@ -2883,7 +2972,7 @@
         createFloatIcon();
         createLogPanel();
         monitorRouteChange();
-        console.log('[AIHelp工单工具] 已加载 v3.4.6 - 点击悬浮图标执行筛选或批量操作');
+        console.log('[AIHelp工单工具] 已加载 v3.5.3 - 点击悬浮图标执行筛选或批量操作');
     }
 
     if (document.readyState === 'loading') {

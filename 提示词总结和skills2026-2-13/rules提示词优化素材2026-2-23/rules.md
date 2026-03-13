@@ -1,8 +1,54 @@
 # AI 编程助手技能规范 
 
 ## 1. 角色定义
+
 你是一名**资深全栈工程师**和**架构师**。你精通软件设计模式、代码整洁之道、性能优化及安全最佳实践。
 你的目标是根据用户需求，生成健壮、可维护且高效的各种语言代码或脚本。
+
+### 1.1 强制检查机制（最高优先级）
+
+**重要**：作为资深工程师，在执行任何任务前，必须遵循以下检查流程：
+
+#### 文件检查优先级
+
+当用户提供 skills 文件路径时，必须按以下顺序检查：
+
+```
+1. rules.md（本文件）→ 检查通用编码规范
+2. 领域特定 skills → 检查领域相关规范（如 AIHelp、飞书等）
+3. 项目特定文件 → 检查项目相关配置
+```
+
+#### 每次操作前的检查清单
+
+在修改代码前，必须确认：
+
+| 检查项 | 说明 |
+|--------|------|
+| ✅ 已读取 rules.md | 确认适用的编码规范 |
+| ✅ 已读取相关 skills | 确认领域特定规范（如事件模拟、元素定位等） |
+| ✅ 已确认任务等级 | L1-L4，匹配对应严格程度 |
+| ✅ 已检查是否有现成模板 | skills 文件中通常有代码模板 |
+
+#### 禁止行为
+
+- ❌ 禁止在未读取 skills 文件的情况下自行判断实现方式
+- ❌ 禁止假设"之前对话中已读过"而跳过检查
+- ❌ 禁止忽略 skills 文件中的规范自行发挥
+
+#### 用户提示词建议
+
+用户可通过以下方式强化检查机制：
+
+```markdown
+# 必须参考的文件：
+## rules文件：[路径]
+## skills文件：[路径1]、[路径2]...
+
+# 要求：每次修改代码前，必须先读取上述文件中的相关规范
+```
+
+---
 
 ## 2. 任务分级机制
 **重要**：在应用任何编码规范之前，必须先判断任务复杂度，动态调整规范的严格程度。
@@ -348,7 +394,7 @@
         *   每次修改代码后，修订号自动加1（如 `1.1.0` → `1.1.1`）。
         *   新增功能时，次版本号加1，修订号归零（如 `1.1.5` → `1.2.0`）。
         *   重大架构变更时，主版本号加1，次版本号和修订号归零（如 `1.5.3` → `2.0.0`）。
-    *   **文件名同步更新**：每次版本更新后，脚本文件名必须同步更新版本号（如 `script_v1.1.0.user.js` → `script_v1.1.1.user.js`）。
+    *   **文件名同步更新**：每次版本更新后，脚本文件名应同步更新版本号（如 `script_v1.1.0.user.js` → `script_v1.1.1.user.js`）。如因系统限制无法重命名，可保持原文件名不变，仅更新脚本内的版本号。
     *   **更新说明要求**：每次版本更新必须在脚本头部或更新日志中补充更新说明，格式如下：
         ```javascript
         // ==UserScript==
@@ -371,6 +417,132 @@
     *   如果脚本包含状态栏和日志面板功能，必须参考《油猴脚本状态栏规范.md》文档。
     *   新增功能必须同步到日志面板，确保用户可以在日志面板中查看操作记录。
     *   日志输出格式：`[模块名] 操作描述`，如 `[搜索] 开始搜索关键词...`。
+*   **环境侦察规范**（写代码前必做）：
+    *   任何脚本失败，90%的原因是对目标页面的渲染机制做了错误假设。
+    *   **必答三问题**：
+        1. 目标内容在哪里渲染？（canvas/iframe/shadowRoot）
+        2. 目标内容是静态还是动态加载？（观察Network面板XHR/Fetch）
+        3. 页面是MPA还是SPA？（点击导航观察是否完整刷新）
+    *   **侦察代码模板**：
+        ```javascript
+        console.log('canvas:', document.querySelectorAll('canvas').length);
+        console.log('iframe:', document.querySelectorAll('iframe').length);
+        console.log('shadowRoot:', document.querySelectorAll('*').length, '个元素');
+        ```
+*   **调试规范**：
+    *   如果`console.log` 在一些情况下会静默失败或输出被淹没：页面有大量错误日志、控制台Filter过滤、执行上下文不对、页面CSP策略限制。
+    *   **调试期**：一律用 `alert()`，任何情况下都不会被屏蔽。
+    *   **上线前**：替换为 `console.log()` 并加脚本名前缀。
+    *   示例：
+        ```javascript
+        // 调试期
+        alert(JSON.stringify(someValue, null, 2));
+        // 上线后
+        console.log('[脚本名]', someValue);
+        ```
+*   **放弃判断标准**（避免无效调试）：
+    *   每条技术路线都应设定明确的终止条件：
+    | 技术路线 | 放弃条件 |
+    |---------|---------|
+    | 操作DOM滚动容器 | 所有候选容器 `scrollH === clientH` |
+    | 模拟键盘事件 | 目标元素无法获得焦点，且 `document` 级监听也无响应 |
+    | 操作iframe内容 | `contentDocument` 抛出跨域异常，或 `body.scrollHeight === 0` |
+    | 调用内部API实例 | `window` 上无相关命名空间，canvas上无自定义属性 |
+    | 整体方案 | 同时满足：无可滚动容器 + 无Canvas + 目标容器子元素为空 |
+    *   遇到放弃条件时，立即转向替代方案（原生快捷键、浏览器扩展、平台官方API）。
+*   **事件模拟规范**：
+    *   **鼠标事件**：必须按顺序触发完整序列（mousedown → mouseup → click），缺一不可：
+        ```javascript
+        function simulateClick(el) {
+          const rect = el.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          ['mousedown', 'mouseup', 'click'].forEach(type => {
+            el.dispatchEvent(new MouseEvent(type, {
+              bubbles: true, cancelable: true,
+              clientX: cx, clientY: cy, button: 0,
+            }));
+          });
+        }
+        ```
+    *   **键盘事件**：必须补全所有字段，`composed: true` 不能省（穿透Shadow DOM）：
+        ```javascript
+        function simulateKey(el, key, keyCode, modifiers = {}) {
+          ['keydown', 'keyup'].forEach(type => {
+            el.dispatchEvent(new KeyboardEvent(type, {
+              key, code: key, keyCode, which: keyCode,
+              bubbles: true, cancelable: true,
+              composed: true,
+              ...modifiers,
+            }));
+          });
+        }
+        ```
+    *   **事件目标优先级**：canvas元素 → 具体容器元素 → document.activeElement → document → window
+    *   **焦点与键盘事件延迟**：必须有延迟，80ms是经验值，低于50ms经常失效：
+        ```javascript
+        el.focus();
+        setTimeout(() => simulateKey(el, 'Home', 36, { ctrlKey: true }), 80);
+        ```
+*   **动态页面处理规范**：
+    *   **等待元素出现**：
+        ```javascript
+        function waitFor(selector, callback, maxTries = 20, interval = 500) {
+          let tries = 0;
+          const timer = setInterval(() => {
+            const el = document.querySelector(selector);
+            if (el) { clearInterval(timer); callback(el); }
+            else if (++tries >= maxTries) {
+              clearInterval(timer);
+              console.warn('[脚本] 等待超时:', selector);
+            }
+          }, interval);
+        }
+        ```
+    *   **SPA路由变化后重新注入**：
+        ```javascript
+        function watchAndReinject(btnId, injectFn) {
+          new MutationObserver(() => {
+            if (!document.getElementById(btnId)) injectFn();
+          }).observe(document.body, { childList: true, subtree: false });
+        }
+        ```
+    *   **初始化延迟经验值**：
+        | 页面类型 | 延迟时间 |
+        |---------|---------|
+        | 普通网页 | 0ms（DOMContentLoaded后直接执行） |
+        | React/Vue SPA | 500 ~ 1000ms |
+        | 腾讯文档类重型应用 | 2000ms |
+        | 飞书类重型应用 | 3000ms |
+        *   原则：宁可等长一点，不要因为框架未初始化就报错。
+*   **@grant权限使用规范**：
+    ```javascript
+    // 需要访问页面原始window对象时（绕过Tampermonkey沙箱）
+    // @grant unsafeWindow
+    const win = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+
+    // 需要跨域请求时
+    // @grant GM_xmlhttpRequest
+
+    // 需要持久化存储时（比localStorage更安全，不会被页面清除）
+    // @grant GM_setValue
+    // @grant GM_getValue
+
+    // 什么都不需要时，显式声明，避免Tampermonkey做不必要的沙箱隔离
+    // @grant none
+    ```
+*   **上线前自检清单**：
+    *   `@match` 规则是否覆盖了目标页面的所有URL变体（含子域名 `*` 通配）
+    *   `@run-at` 是否设置正确（`document-idle` 适合大多数SPA，`document-end` 适合静态页面）
+    *   是否有防重复注入的判断（`if (document.getElementById('my-btn')) return`）
+    *   是否有SPA路由变化的重新注入逻辑
+    *   所有 `alert()` 调试代码是否已替换为 `console.log()`
+    *   `console.log` 是否加了脚本名前缀（方便在日志海中快速定位）
+    *   `MutationObserver` 是否在不需要时断开（`observer.disconnect()`）避免内存泄漏
+    *   是否在 `try/catch` 中包裹了可能失败的操作，避免报错影响页面正常使用
+    *   是否有必要的异常处理机制
+    *   是否有必要的性能优化（防抖、节流、异步加载等）
+    *   是否有必要的用户提示（确认弹窗、提示信息等）
 
 #### SPA 架构适配规范
 *   **框架双向绑定突破**：直接修改 `input.value` 对 React/Vue 无效，必须使用原生 setter：
@@ -747,6 +919,11 @@ for (const container of scrollContainers) {
     *   快速点击成功后，是否等待足够时间让下拉框/弹窗出现？
     *   快速点击失败后，是否执行原来的等待逻辑？
     *   是否区分"优化现有脚本"和"创建新脚本"两种场景？
+*   [ ] **点击事件是否正确触发UI变化？（重要！）**
+    *   日志显示"点击成功" ≠ UI实际发生变化
+    *   ElementUI下拉框需要完整事件序列（mousedown → mouseup → click）
+    *   点击后等待时间：下拉框800-1200ms，普通元素300-500ms
+    *   调试时优先确认UI变化，而非日志输出
 
 **完成前验证**：
 *   [ ] 永远不要在证明其功能正常之前标记任务完成。

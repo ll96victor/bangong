@@ -1,3 +1,19 @@
-2026/03/05-13:24:03.573 a6c8 Reusing MANIFEST C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表\chrome_automation\Default\IndexedDB\https_project.feishu.cn_0.indexeddb.leveldb/MANIFEST-000001
-2026/03/05-13:24:03.574 a6c8 Recovering log #3
-2026/03/05-13:24:03.583 a6c8 Reusing old log C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表\chrome_automation\Default\IndexedDB\https_project.feishu.cn_0.indexeddb.leveldb/000003.log 
+2026/03/13-09:58:01.363 5cb4 Reusing MANIFEST C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表2026-3-5\chrome_automation\Default\IndexedDB\https_project.feishu.cn_0.indexeddb.leveldb/MANIFEST-000001
+2026/03/13-09:58:01.364 5cb4 Recovering log #13
+2026/03/13-09:58:01.373 5cb4 Reusing old log C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表2026-3-5\chrome_automation\Default\IndexedDB\https_project.feishu.cn_0.indexeddb.leveldb/000013.log 
+2026/03/13-09:58:14.078 5cb4 Level-0 table #21: started
+2026/03/13-09:58:14.094 5cb4 Level-0 table #21: 3202722 bytes OK
+2026/03/13-09:58:14.095 5cb4 Delete type=0 #13
+2026/03/13-09:58:14.690 14b4 Compacting 1@1 + 4@2 files
+2026/03/13-09:58:14.707 14b4 Generated table #22@1: 678 keys, 2120725 bytes
+2026/03/13-09:58:14.720 14b4 Generated table #23@1: 571 keys, 2109274 bytes
+2026/03/13-09:58:14.734 14b4 Generated table #24@1: 586 keys, 2121521 bytes
+2026/03/13-09:58:14.750 14b4 Generated table #25@1: 592 keys, 2110918 bytes
+2026/03/13-09:58:14.768 14b4 Generated table #26@1: 6604 keys, 2055196 bytes
+2026/03/13-09:58:14.768 14b4 Compacted 1@1 + 4@2 files => 10517634 bytes
+2026/03/13-09:58:14.769 14b4 compacted to: files[ 0 0 5 0 0 0 0 ]
+2026/03/13-09:58:14.769 14b4 Delete type=2 #15
+2026/03/13-09:58:14.769 14b4 Delete type=2 #16
+2026/03/13-09:58:14.769 14b4 Delete type=2 #17
+2026/03/13-09:58:14.769 14b4 Delete type=2 #18
+2026/03/13-09:58:14.769 14b4 Delete type=2 #21

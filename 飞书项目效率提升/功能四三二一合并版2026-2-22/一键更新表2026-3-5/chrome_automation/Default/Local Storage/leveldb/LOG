@@ -1,8 +1,17 @@
-2026/03/05-13:28:08.257 54fc Reusing MANIFEST C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表\chrome_automation\Default\Local Storage\leveldb/MANIFEST-000001
-2026/03/05-13:28:08.263 54fc Recovering log #7
-2026/03/05-13:28:08.263 54fc Level-0 table #10: started
-2026/03/05-13:28:08.268 54fc Level-0 table #10: 34180 bytes OK
-2026/03/05-13:28:08.273 54fc Delete type=0 #7
-2026/03/05-13:29:08.281 b59c Level-0 table #13: started
-2026/03/05-13:29:08.288 b59c Level-0 table #13: 43589 bytes OK
-2026/03/05-13:29:08.290 b59c Delete type=0 #11
+2026/03/13-09:54:03.460 4fcc Reusing MANIFEST C:\bangong\飞书项目效率提升\功能四三二一合并版2026-2-22\一键更新表2026-3-5\chrome_automation\Default\Local Storage\leveldb/MANIFEST-000001
+2026/03/13-09:54:03.464 4fcc Recovering log #12
+2026/03/13-09:54:03.465 4fcc Level-0 table #15: started
+2026/03/13-09:54:03.468 4fcc Level-0 table #15: 44975 bytes OK
+2026/03/13-09:54:03.472 4fcc Delete type=0 #12
+2026/03/13-09:59:14.976 5cbc Level-0 table #18: started
+2026/03/13-09:59:14.979 5cbc Level-0 table #18: 43869 bytes OK
+2026/03/13-09:59:14.981 5cbc Delete type=0 #16
+2026/03/13-09:59:14.981 5cbc Compacting 4@0 + 1@1 files
+2026/03/13-09:59:14.985 5cbc Generated table #19@0: 20 keys, 23048 bytes
+2026/03/13-09:59:14.986 5cbc Compacted 4@0 + 1@1 files => 23048 bytes
+2026/03/13-09:59:14.986 5cbc compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/13-09:59:14.987 5cbc Delete type=2 #8
+2026/03/13-09:59:14.987 5cbc Delete type=2 #10
+2026/03/13-09:59:14.987 5cbc Delete type=2 #13
+2026/03/13-09:59:14.987 5cbc Delete type=2 #15
+2026/03/13-09:59:14.987 5cbc Delete type=2 #18
