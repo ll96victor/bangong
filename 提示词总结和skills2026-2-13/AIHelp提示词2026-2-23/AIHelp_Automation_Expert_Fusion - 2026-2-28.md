@@ -1327,3 +1327,333 @@ async function safeClick(element, waitAfter = 1000) {
 | "点击X时有问题" | "下拉框没有出现" |
 | 日志只显示最终结果 | 日志 + 具体哪个步骤失败 |
 | 没有指出怀疑原因 | 指出"快速点击可能有问题" |
+
+---
+
+## AIHelp 客诉页面自动化经验总结（2026-03-20 更新）
+
+> **说明**：以下内容专门针对 AIHelp Ticket（客诉）页面的自动化开发经验，与上述工单页面经验互补。
+
+### 一、快速响应 + 重试机制（核心模式）
+
+#### 问题背景
+
+在开发油猴脚本时，经常面临两难选择：
+- 等待时间太短 → 网络波动时失败
+- 等待时间太长 → 正常情况响应慢
+
+#### 解决方案
+
+采用"快速响应 + 重试机制"，而非直接增加等待时间。
+
+```javascript
+// 配置参数
+const CONFIG = {
+    dialogWaitTime: 300,      // 弹窗等待（快速响应）
+    dropdownWaitTime: 200,    // 下拉框等待（快速响应）
+    inputWaitTime: 100,       // 输入等待（快速响应）
+    maxRetries: 3,            // 最大重试次数
+    retryDelay: 500           // 重试间隔
+};
+
+// 重试机制实现
+async function handleChangeGroup(button) {
+    // 前置检查（无需重试）
+    const groupBtn = findGroupButton();
+    if (!groupBtn) {
+        showFeedback(button, '✗', 'error');
+        return;
+    }
+
+    // 检查当前状态（无需重试）
+    const currentGroupText = groupBtn.textContent.trim();
+    if (currentGroupText === CONFIG.targetGroup) {
+        showFeedback(button, '✓', 'success');
+        return;
+    }
+
+    // 需要网络交互的部分使用重试机制
+    for (let retry = 0; retry < CONFIG.maxRetries; retry++) {
+        if (retry > 0) {
+            log(`第 ${retry + 1} 次重试...`);
+            await sleep(CONFIG.retryDelay);
+        }
+
+        try {
+            // 执行操作步骤...
+            triggerClick(groupBtn);
+            await sleep(CONFIG.dialogWaitTime);
+
+            const queueInput = await waitForQueueInput(1000);
+            if (!queueInput) {
+                log('未找到输入框，准备重试');
+                continue;  // 失败则重试
+            }
+
+            // ... 后续步骤
+
+            // 成功则返回
+            showFeedback(button, '✓', 'success');
+            return;
+        } catch (e) {
+            console.error('[操作异常]', e);
+        }
+    }
+
+    // 所有重试都失败
+    showFeedback(button, '✗', 'error');
+}
+```
+
+#### 等待时间参考值
+
+| 操作类型 | 快速响应时间 | 重试间隔 | 最大重试次数 |
+|---------|-------------|---------|-------------|
+| 弹窗等待 | 300ms | 500ms | 3次 |
+| 下拉框等待 | 200ms | 500ms | 3次 |
+| 输入等待 | 100ms | 500ms | 3次 |
+
+### 二、油猴脚本沙箱环境问题
+
+#### 问题现象
+
+在油猴脚本中创建 MouseEvent 时报错：
+```
+TypeError: Failed to construct 'MouseEvent': Failed to read the 'view' property from 'UIEventInit'
+```
+
+#### 原因分析
+
+油猴脚本运行在沙箱环境中，`window` 对象被包装，无法转换为原生的 `Window` 对象。
+
+#### 解决方案
+
+移除 `view: window` 属性，MouseEvent 会自动使用当前 window。
+
+```javascript
+// ❌ 错误写法（沙箱环境会报错）
+element.dispatchEvent(new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+    view: window  // 沙箱中无法转换
+}));
+
+// ✅ 正确写法
+element.dispatchEvent(new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true
+    // 不写 view，自动使用当前 window
+}));
+```
+
+### 三、UI 按钮合并拖动
+
+#### 问题背景
+
+多个独立按钮各自有拖动逻辑，用户希望它们能一起拖动。
+
+#### 解决方案
+
+将所有按钮放入同一容器，拖动逻辑绑定到容器。
+
+```javascript
+function initButtons() {
+    // 创建主容器
+    const mainContainer = document.createElement('div');
+    mainContainer.id = 'ai-btn-main-container';
+    mainContainer.className = 'ai-btn-main-container';
+
+    // 创建各功能按钮
+    const btn1 = document.createElement('div');
+    btn1.className = 'ai-action-btn';
+    btn1.addEventListener('click', handler1);
+
+    const btn2 = document.createElement('div');
+    btn2.className = 'ai-action-btn';
+    btn2.addEventListener('click', handler2);
+
+    // 添加到容器
+    mainContainer.appendChild(btn1);
+    mainContainer.appendChild(btn2);
+
+    // 绑定拖拽逻辑到容器
+    setupDraggable(mainContainer);
+
+    document.body.appendChild(mainContainer);
+}
+
+function setupDraggable(element) {
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    element.addEventListener('mousedown', (e) => {
+        // 如果点击的是按钮本身，不触发拖拽
+        if (e.target.closest('.ai-action-btn')) {
+            return;
+        }
+
+        isDragging = true;
+        const rect = element.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+
+        element.style.left = (e.clientX - offsetX) + 'px';
+        element.style.top = (e.clientY - offsetY) + 'px';
+        element.style.right = 'auto';
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isDragging) {
+            isDragging = false;
+            // 保存位置到 localStorage
+            localStorage.setItem('btn-position', JSON.stringify({
+                left: element.style.left,
+                top: element.style.top
+            }));
+        }
+    });
+
+    // 恢复保存的位置
+    const saved = localStorage.getItem('btn-position');
+    if (saved) {
+        const pos = JSON.parse(saved);
+        element.style.left = pos.left;
+        element.style.top = pos.top;
+        element.style.right = 'auto';
+    }
+}
+```
+
+### 四、提供完整 DOM 结构的重要性
+
+#### 问题背景
+
+开发过程中多次修改选择器，根本原因是用户没有提供完整的 DOM 结构。
+
+#### 最佳实践
+
+用户在提需求时，应提供以下信息：
+
+```markdown
+## DOM 结构
+目标元素的完整 HTML：
+<ul class="el-scrollbar__view el-select-dropdown__list">
+    <li class="el-select-dropdown__item selected hover" title="CN 二线-BUG">
+        <span>CN 二线-BUG</span>
+    </li>
+</ul>
+
+## 关键选择器
+- 分组按钮：`button` 内含 `svg.icon-ai-group`
+- 分配界面：`.ai-distribute-ticket-wrap`
+- 客诉队列输入框：`input.el-input__inner`，placeholder 包含"请选择客诉队列"
+- 已选中选项：`.el-select-dropdown__item.selected.hover`
+```
+
+#### 经验教训
+
+| 缺失信息 | 导致的问题 |
+|---------|-----------|
+| DOM 结构 | 多次修改选择器 |
+| 元素定位方式 | 最初依赖文本，后改为图标 |
+| 交互流程细节 | 不清楚输入框是否可直接输入 |
+| 网络环境 | 等待时间过长/过短 |
+
+### 五、客诉页面特定选择器参考
+
+#### 分组功能
+
+```javascript
+// 分组按钮定位（通过图标，不依赖文本）
+function findGroupButton() {
+    const allButtons = document.querySelectorAll('button');
+    for (const btn of allButtons) {
+        const svg = btn.querySelector('svg.icon-ai-group');
+        if (svg && isElementAvailable(btn)) {
+            const rect = btn.getBoundingClientRect();
+            if (rect.top > 0 && rect.top < 200) {
+                return btn;
+            }
+        }
+    }
+    return null;
+}
+
+// 客诉队列输入框
+async function waitForQueueInput(timeout = 3000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+        const dialog = document.querySelector('.ai-distribute-ticket-wrap');
+        if (dialog) {
+            const inputs = dialog.querySelectorAll('input.el-input__inner');
+            for (const input of inputs) {
+                const placeholder = input.getAttribute('placeholder') || '';
+                if (placeholder.includes('请选择客诉队列')) {
+                    if (isElementAvailable(input)) {
+                        return input;
+                    }
+                }
+            }
+        }
+        await sleep(100);
+    }
+    return null;
+}
+
+// 快速查找已选中选项
+async function findDropdownOptionFast(targetText) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < 2000) {
+        // 优先查找带有 selected hover 类的选项
+        const selectedOption = document.querySelector('.el-select-dropdown__item.selected.hover');
+        if (selectedOption && isElementAvailable(selectedOption)) {
+            return selectedOption;
+        }
+        await sleep(50);
+    }
+    return null;
+}
+```
+
+#### 打标签功能
+
+```javascript
+// 标签容器定位
+function findTagContainer() {
+    const containers = document.querySelectorAll('.ai-select-tag.elp-cascader');
+    for (const container of containers) {
+        if (isElementAvailable(container)) {
+            return container;
+        }
+    }
+    return null;
+}
+
+// 检查标签是否已存在
+function isTagExists(container, targetTag) {
+    const showtags = container.getAttribute('showtags') || '';
+    return showtags.includes(targetTag);
+}
+
+// 标签选项定位
+async function findTagOption(targetText) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < 2000) {
+        const options = document.querySelectorAll('.elp-cascader__suggestion-item');
+        for (const option of options) {
+            const text = option.textContent.trim();
+            if (text.includes(targetText)) {
+                if (isElementAvailable(option)) {
+                    return option;
+                }
+            }
+        }
+        await sleep(50);
+    }
+    return null;
+}
+```
