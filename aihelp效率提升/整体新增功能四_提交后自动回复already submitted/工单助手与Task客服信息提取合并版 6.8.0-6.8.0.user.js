@@ -1,16 +1,15 @@
 // ==UserScript==
-// @name         工单助手与Task客服信息提取合并版 6.8.0
+// @name         工单助手与Task客服信息提取合并版 6.8.10
 // @namespace    http://tampermonkey.net/
-// @version      6.8.0
-// @description  新增内部回复功能：在面板和展开菜单提供内部回复的快捷按钮，模拟用户点击
-// @author       AI Combined & Optimized
+// @version      6.8.10
+// @description  优化工单识别性能，并增强标题翻译、飞书搜索稳定性与复制链路
+// @author       ll96victor
 // @match        https://ml-panel.aihelp.net/*
 // @match        https://ml.aihelp.net/*
 // @match        https://aihelp.net.cn/*
 // @match        https://aihelp.net/*
 // @match        https://project.feishu.cn/ml/workObjectView/onlineissue/Cot68m5vg
 // @match        https://project.feishu.cn/ml/workObjectView/onlineissue/Cot68m5vg?*
-// @match        https://project.feishu.cn/ml/*
 // @match        https://gm.moba.youngjoygame.com:8090/*
 // @exclude      *://*/dashboard/#/newpage-ticket*
 // @exclude      *://*/dashboard/#/newpage-ticket/*
@@ -24,9 +23,6 @@
 // @grant        GM_registerMenuCommand
 // @connect      translate.googleapis.com
 // @connect      api.mymemory.translated.net
-// @connect      api.deeplx.fun
-// @connect      api.deeplx.org
-// @connect      api.popcat.xyz
 // @connect      open.bigmodel.cn
 // @connect      project.feishu.cn
 // @connect      gm.moba.youngjoygame.com
@@ -34,6 +30,64 @@
 // ==/UserScript==
 
 /**
+ * v6.8.10 (2026-03-22) Fix mail reward click confirmation chain and add fallback recovery for normal-ticket iteration/channel autofill
+ *
+ * v6.8.9 (2026-03-22) 优化了飞书页的逻辑，MCGG工单的“功能模块”自动处理，发送邮件未识别的问题
+ * 
+ * v6.8.8 (2026-03-22) 创建人自动填充；下拉选中项误点修复；翻译面板可编辑；邮件一键发送模块 H
+ *
+ * 【变更摘要】
+ *   - 模块 A：关联第三方「创建人*」在标题处理后、发现迭代前自动选「梁磊」
+ *   - selectDropdownOption：不再用当前「已选中」项作为回退，避免渠道需从「全服」改「测服」时误点全服
+ *   - 翻译交互面板：强制可编辑（user-select / pointer-events），避免受状态栏 user-select:none 影响
+ *   - 模块 H：状态栏「邮」+ 展开「发送邮件」，按邮件类型字典走 更多→发送奖励→…→解决 流程（独立 IIFE）
+ *
+ * v6.8.7 (2026-03-22) 飞书搜索日志 requestId；维护文档与回归清单同步（见仓库维护与交接文档）
+ *
+ * 【变更摘要】
+ *   - 飞书：每次触发搜索生成 `searchRequestId`（形如 fs_<时间戳>_<随机>），写入 pending，AIHelp/飞书端控制台与面板日志带同一前缀便于对照
+ *
+ * v6.8.6 (2026-03-22) 内部回复二段点击；关联第三方下拉定位增强
+ *
+ * 【变更摘要】
+ *   - 模块 G：若已存在标题为「内部回复」的对话框，则点击底部「回复」；否则仍点工具栏「内部回复」
+ *   - 关联第三方：优先识别 `.custom-down-select-search` 弹出层；展开时依次尝试 input / 箭头 / 合成事件；填充链路带 `preferThirdLink`
+ *   - 关联第三方行标题匹配放宽（含「发现迭代*」等）；自动处理前短暂等待 DOM 就绪
+ *
+ * v6.8.5 (2026-03-22) 关联第三方：发现迭代/渠道自动选择修复与 MCGG 对齐
+ *
+ * 【变更摘要】
+ *   - 修复油猴环境下 MouseEvent 传入 view 导致下拉无法展开（关联第三方自动填充失效）
+ *   - 「关联第三方」内按 tabDetail-item.thirdLink + 标题定位，点击 el-select 后搜索并点击匹配项
+ *   - 「渠道」若当前展示值已与 ServerID 推断一致则跳过，避免重复操作
+ *   - MCGG 工单在标题处理完成后同样自动处理发现迭代与渠道
+ *   - 飞书 not_logged_in 提示增加「后台已开标签页」说明，减轻误报困扰
+ *
+ * v6.8.3 (2026-03-21) 第二批中风险优化：工单ID识别收敛
+ *
+ * 【优化内容】
+ *   - `getCurrentTicketID` 改为 URL 直取优先、局部容器优先、全局扫描兜底
+ *   - 减少 500ms 轮询时的大范围 DOM 遍历，降低页面扫描开销
+ *   - 保持原有容错能力，避免直接缩窄选择器导致漏识别
+ *
+ * v6.8.2 (2026-03-21) 翻译链路、飞书搜索与状态栏视觉优化
+ *
+ * 【优化内容】
+ *   - 恢复各模块调试日志默认开启，保留日志面板可观测性
+ *   - 标题无冒号时也走翻译流程，繁体中文支持转简体候选
+ *   - 中文标题保留交互面板，不再因跳过外部翻译而丢失候选面板
+ *   - 飞书搜索仅作用于目标页面，增加心跳复用并在返回结果后自动刷新目标页
+ *   - 重绘六宫格状态栏配色与层次，移除 MCGG 紫色方案
+ *
+ * v6.8.1 (2026-03-21) 低风险清理与日志门控整理
+ *
+ * 【优化内容】
+ *   - 统一 AIHelp 目标页判断逻辑，减少重复代码
+ *   - 删除未使用的翻译源实现与失效的 DOM 选择器
+ *   - 修正状态栏六区域注释，避免维护时混淆
+ *   - 收紧调试日志开关，减少生产环境控制台噪音
+ *
+ * 【历史更新】
  * v6.8.0 (2026-03-19) 新增内部回复快捷按钮功能（模块G）
  *
  * 【新增功能 - 模块G：内部回复】
@@ -84,8 +138,12 @@
     }
 
     // 判定当前页面是否为目标页面
-    function isTargetPage() {
+    function isTargetAIHelpPage() {
         return currentUrl.includes('task?orderId') || currentUrl.includes('tasks?searchType');
+    }
+
+    function isTargetPage() {
+        return isTargetAIHelpPage();
     }
 
     if (!isTargetPage()) {
@@ -101,22 +159,22 @@
      * 判断是否应该运行普通工单模块
      */
     function shouldRunNormalModule() {
-        return currentUrl.includes('task?orderId') || currentUrl.includes('tasks?searchType');
+        return isTargetAIHelpPage();
     }
 
     /**
      * 判断是否应该运行Task模块
      */
     function shouldRunTaskModule() {
-        return currentUrl.includes('task?orderId') || currentUrl.includes('tasks?searchType');
+        return isTargetAIHelpPage();
     }
 
-    // ===================== 公共区域：状态栏 UI 类 (四区域图标版) =====================
+    // ===================== 公共区域：状态栏 UI 类 (六区域图标版) =====================
     // 注意：UI始终创建，各模块根据URL决定是否运行
 
     /**
-     * 状态栏UI类 - 四区域图标版
-     * 小图标分为四个独立可点击区域，支持拖拽
+     * 状态栏UI类 - 七区域图标版（含「邮」）
+     * 小图标分为七个独立可点击区域，支持拖拽
      * 支持日志面板可拖拽、可调整大小、位置和大小记忆
      */
     class StatusbarUI {
@@ -149,6 +207,7 @@
                 task: null,
                 clear: null,   // [模块F] 清除头像冷却时间
                 reply: null,   // [模块G] 内部回复
+                mail: null,    // [模块H] 邮件一键发送
                 expand: null
             };
             this.delayedTipTimers = {};
@@ -159,6 +218,7 @@
                 task: { title: 'Task信息', desc: '提取客服信息并复制链接' },
                 clear: { title: '清除头像', desc: '提取信息并清除头像冷却' }, // [模块F]
                 reply: { title: '内部回复', desc: '点击工单界面的内部回复按钮' }, // [模块G]
+                mail: { title: '发送邮件', desc: '按类型自动：更多→发送奖励→选择奖励→解决' }, // [模块H]
                 expand: { title: '展开面板', desc: '查看日志和更多选项' }
             };
             // [模块F] 跨域日志轮询相关（GM工具页面 → 主脚本日志面板）
@@ -277,46 +337,50 @@
                 .ai-status-bar-container {
                     position: fixed;
                     z-index: 999999;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
                     user-select: none;
                 }
 
-                /* 五区域图标容器（2列×3行，第5格为"清"，第6格为"⚡"） */
+                /* 七区域图标容器（2列×4行，末行「邮」跨两列） */
                 .ai-status-icon {
                     width: 44px;
-                    height: 66px;
-                    border-radius: 8px;
-                    background: #fff;
+                    height: 88px;
+                    border-radius: 12px;
+                    background: linear-gradient(180deg, #ffffff 0%, #eef3f9 100%);
                     display: grid;
                     grid-template-columns: 1fr 1fr;
-                    grid-template-rows: 1fr 1fr 1fr;
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                    grid-template-rows: 1fr 1fr 1fr 1fr;
+                    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.18);
                     cursor: move;
-                    border: 1px solid rgba(0, 0, 0, 0.08);
+                    border: 1px solid rgba(148, 163, 184, 0.28);
                     transition: transform 0.2s, box-shadow 0.2s;
                 }
                 .ai-status-icon:hover {
-                    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+                    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.24);
                 }
                 .ai-status-icon.dragging {
                     cursor: grabbing;
-                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+                    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.3);
                 }
 
-                /* 四个功能区域 */
+                /* 六个功能区域 */
                 .ai-icon-zone {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 14px;
-                    font-weight: 600;
+                    font-size: 13px;
+                    font-weight: 700;
                     cursor: pointer;
-                    transition: background 0.15s ease, opacity 0.15s ease;
+                    transition: background 0.15s ease, opacity 0.15s ease, transform 0.15s ease;
                     position: relative;
                     width: 22px;
                     height: 22px;
                     flex-shrink: 0;
                     overflow: visible;
+                    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.16);
+                }
+                .ai-icon-zone:hover {
+                    transform: translateY(-1px);
                 }
 
                 /* 区域1：普通工单 - 左上 - 蓝色 */
@@ -332,40 +396,40 @@
                     opacity: 0.7;
                 }
 
-                /* 区域2：MCGG - 右上 - 紫色 */
+                /* 区域2：MCGG - 右上 - 青绿色 */
                 .ai-icon-zone-mcgg {
-                    background: linear-gradient(135deg, #722ed1 0%, #9254de 100%);
+                    background: linear-gradient(135deg, #0f9b8e 0%, #22c7b8 100%);
                     color: white;
                     border-radius: 0 6px 0 0;
                 }
                 .ai-icon-zone-mcgg:hover {
-                    background: linear-gradient(135deg, #5b23a8 0%, #7a3dc7 100%);
+                    background: linear-gradient(135deg, #0b7f74 0%, #19a99b 100%);
                 }
                 .ai-icon-zone-mcgg:active {
                     opacity: 0.7;
                 }
 
-                /* 区域3：Task - 左下 - 橙色 */
+                /* 区域3：Task - 左中 - 暖金色 */
                 .ai-icon-zone-task {
-                    background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+                    background: linear-gradient(135deg, #f3b63f 0%, #f28b54 100%);
                     color: white;
-                    border-radius: 0 0 0 6px;
+                    border-radius: 0;
                 }
                 .ai-icon-zone-task:hover {
-                    background: linear-gradient(135deg, #e5c254 0%, #f08c6f 100%);
+                    background: linear-gradient(135deg, #df9d1c 0%, #ea7235 100%);
                 }
                 .ai-icon-zone-task:active {
                     opacity: 0.7;
                 }
 
-                /* 区域4：展开面板 - 右下 - 灰色 */
+                /* 区域4：展开面板 - 右中 - 石板蓝 */
                 .ai-icon-zone-expand {
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    background: linear-gradient(135deg, #4765a8 0%, #5f7cc0 100%);
                     color: white;
-                    border-radius: 0 0 6px 0;
+                    border-radius: 0;
                 }
                 .ai-icon-zone-expand:hover {
-                    background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
+                    background: linear-gradient(135deg, #35518f 0%, #4968ad 100%);
                 }
                 .ai-icon-zone-expand:active {
                     opacity: 0.7;
@@ -388,7 +452,7 @@
                 .ai-icon-zone-reply {
                     background: linear-gradient(135deg, #fa8c16 0%, #ffa940 100%);
                     color: white;
-                    border-radius: 0 0 6px 0;
+                    border-radius: 0;
                 }
                 .ai-icon-zone-reply:hover {
                     background: linear-gradient(135deg, #d46b08 0%, #e8922d 100%);
@@ -396,6 +460,27 @@
                 .ai-icon-zone-reply:active {
                     opacity: 0.7;
                 }
+
+                /* [模块H] 区域7：发送邮件 - 底行通栏 - 紫色 */
+                .ai-icon-zone-mail {
+                    grid-column: 1 / -1;
+                    width: 100%;
+                    min-width: 0;
+                    background: linear-gradient(135deg, #722ed1 0%, #9254de 100%);
+                    color: white;
+                    border-radius: 0 0 6px 6px;
+                    font-size: 12px;
+                }
+                .ai-icon-zone-mail:hover {
+                    background: linear-gradient(135deg, #531dab 0%, #722ed1 100%);
+                }
+                .ai-icon-zone-mail:active {
+                    opacity: 0.7;
+                }
+
+                .btn-mail { background: linear-gradient(135deg, #722ed1 0%, #9254de 100%); color: white; }
+                .btn-mail:hover { opacity: 0.92; transform: translateY(-1px); }
+                .btn-mail.success { background: linear-gradient(135deg, #531dab 0%, #722ed1 100%) !important; }
 
                 /* 成功状态 */
                 .ai-icon-zone.success {
@@ -421,12 +506,12 @@
                     height: 350px;
                     min-width: 120px;
                     min-height: 200px;
-                    background: rgba(255, 255, 255, 0.98);
+                    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 250, 253, 0.96) 100%);
                     backdrop-filter: blur(10px);
-                    border-radius: 12px;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+                    border-radius: 14px;
+                    box-shadow: 0 20px 44px rgba(15, 23, 42, 0.18);
                     padding: 12px;
-                    border: 1px solid rgba(0, 0, 0, 0.05);
+                    border: 1px solid rgba(148, 163, 184, 0.24);
                     display: flex;
                     flex-direction: column;
                     gap: 10px;
@@ -528,7 +613,7 @@
                 .btn-normal:hover { background: #285acc; transform: translateY(-1px); }
                 .btn-normal.success { background: #52c41a !important; }
 
-                .btn-mcgg { background: linear-gradient(135deg, #722ed1 0%, #9254de 100%); color: white; }
+                .btn-mcgg { background: linear-gradient(135deg, #0f9b8e 0%, #22c7b8 100%); color: white; }
                 .btn-mcgg:hover { opacity: 0.9; transform: translateY(-1px); }
                 .btn-mcgg.success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important; }
 
@@ -575,9 +660,18 @@
                 .ai-log-error { color: #ff4d4f; }
 
                 .ai-log-module-normal { color: #3370ff; font-weight: 600; }
-                .ai-log-module-mcgg { color: #722ed1; font-weight: 600; }
+                .ai-log-module-mcgg { color: #0f9b8e; font-weight: 600; }
                 .ai-log-module-task { color: #f5a623; font-weight: 600; }
+                .ai-log-module-mail { color: #722ed1; font-weight: 600; }
 
+                /* 多源翻译面板：避免继承状态栏 user-select:none 导致输入框无法编辑 */
+                #ai-merged-statusbar .ai-translation-panel,
+                #ai-merged-statusbar .ai-translation-panel input,
+                #ai-merged-statusbar .ai-translation-panel button {
+                    user-select: text !important;
+                    -webkit-user-select: text !important;
+                    pointer-events: auto !important;
+                }
 
                 /* 5秒延迟详细提示 */
                 .ai-delayed-tip {
@@ -656,17 +750,23 @@
             zoneClear.innerHTML = '<span class="ai-zone-text">清</span>';
             zoneClear.dataset.zone = 'clear';
 
-            // 组装图标容器（6格 2列×3行：N/M/T/⚡/清/内）
+            // 组装图标容器（7 格 2 列×4 行：N/M/T/⚡/清/内 + 底行「邮」通栏）
             // 第1行：N（普通）、M（MCGG）
             // 第2行：T（Task）、⚡（展开）
             // 第3行：清（清除头像）、内（内部回复）
+            // 第4行：邮（发送邮件，跨两列）
             const zoneReply = document.createElement('div');
             zoneReply.className = 'ai-icon-zone ai-icon-zone-reply';
             zoneReply.innerHTML = '<span class="ai-zone-text">内</span>';
             zoneReply.dataset.zone = 'reply';
 
-            this.iconElement.append(zoneNormal, zoneMcgg, zoneTask, zoneExpand, zoneClear, zoneReply);
-            this.zones = { normal: zoneNormal, mcgg: zoneMcgg, task: zoneTask, expand: zoneExpand, clear: zoneClear, reply: zoneReply };
+            const zoneMail = document.createElement('div');
+            zoneMail.className = 'ai-icon-zone ai-icon-zone-mail';
+            zoneMail.innerHTML = '<span class="ai-zone-text">邮</span>';
+            zoneMail.dataset.zone = 'mail';
+
+            this.iconElement.append(zoneNormal, zoneMcgg, zoneTask, zoneExpand, zoneClear, zoneReply, zoneMail);
+            this.zones = { normal: zoneNormal, mcgg: zoneMcgg, task: zoneTask, expand: zoneExpand, clear: zoneClear, reply: zoneReply, mail: zoneMail };
 
             this.expandedElement = document.createElement('div');
             this.expandedElement.className = 'ai-status-expanded';
@@ -731,7 +831,7 @@
                         let newX = moveEvent.clientX - offset.x;
                         let newY = moveEvent.clientY - offset.y;
                         newX = Math.max(0, Math.min(newX, window.innerWidth - 44));
-                        newY = Math.max(0, Math.min(newY, window.innerHeight - 66)); // 图标高度66px（2列×3行）
+                        newY = Math.max(0, Math.min(newY, window.innerHeight - 88)); // 图标高度 88px（2列×4 行含「邮」）
                         this.container.style.left = newX + 'px';
                         this.container.style.top = newY + 'px';
                         this.container.style.right = 'auto';
@@ -955,7 +1055,7 @@
             }
 
             // 设置位置（第1行：normal/mcgg 提示显示在上方；第2/3行：task/expand/clear 提示显示在下方）
-            const isTop = zoneName === 'normal' || zoneName === 'mcgg';
+            const isTop = zoneName === 'normal' || zoneName === 'mcgg' || zoneName === 'mail';
             if (isTop) {
                 tipEl.style.top = '-50px';
                 tipEl.style.bottom = 'auto';
@@ -1205,7 +1305,8 @@
                 task: 'T',
                 expand: '⚡',
                 clear: '清',   // [模块F]
-                reply: '内'    // [模块G]
+                reply: '内',   // [模块G]
+                mail: '邮'     // [模块H]
             };
             if (this.zones[zone]) {
                 const textEl = this.zones[zone].querySelector('.ai-zone-text');
@@ -1319,6 +1420,10 @@
             return /[\u4e00-\u9fa5]/.test(text);
         },
 
+        hasTraditionalChinese(text) {
+            return /[\u7E41\u9AD4\u81FA\u7063\u8207\u70BA\u9019\u500B\u4F86\u5F8C\u6703\u9EDE\u8AAA\u767C\u8B93\u9E97\u89F8\u89C0\u8A2D\u8A08\u8A73\u8AA4\u9084\u908A\u9078\u9054\u958B\u95DC\u96E3]/.test(text);
+        },
+
         /**
          * 判断标题是否为MCGG工单
          * @param {string} titleValue - 标题文本
@@ -1344,15 +1449,58 @@
             return false;
         },
 
-        getCurrentTicketID() {
-            const elements = document.querySelectorAll('p, div, span');
+        getVisibleText(el) {
+            if (!el) return '';
+            const text = typeof el.innerText === 'string' ? el.innerText : el.textContent;
+            return (text || '').trim();
+        },
+
+        findTicketIdInRoot(root) {
+            if (!root || !root.querySelectorAll) return null;
+
+            const elements = root.querySelectorAll('p, span, div');
             for (const el of elements) {
-                const text = el.textContent.trim();
+                if (el.children.length > 0) continue;
+                const text = this.getVisibleText(el);
                 if (/^\d{14}$/.test(text)) {
                     return text;
                 }
             }
+
             return null;
+        },
+
+        getCurrentTicketID() {
+            const urlMatch = currentUrl.match(/[?&]orderId=(\d{14})(?:&|$)/);
+            if (urlMatch && urlMatch[1]) {
+                return urlMatch[1];
+            }
+
+            const roots = [];
+            const seen = new Set();
+            const pushRoot = (root) => {
+                if (!root || seen.has(root)) return;
+                seen.add(root);
+                roots.push(root);
+            };
+
+            const titleInput = document.querySelector('input[placeholder="请输入任务标题"]');
+            pushRoot(titleInput ? titleInput.closest('.el-form-item') : null);
+            pushRoot(titleInput ? titleInput.closest('.el-form') : null);
+            pushRoot(document.querySelector('.title-of-work-order'));
+            pushRoot(document.querySelector('.title-of-work-order')?.closest('.el-form-item, .el-form, .el-card, .el-main, .el-row'));
+            pushRoot(document.querySelector('.el-page-header'));
+            pushRoot(document.querySelector('.el-card'));
+            pushRoot(document.querySelector('.el-main'));
+
+            for (const root of roots) {
+                const ticketId = this.findTicketIdInRoot(root);
+                if (ticketId) {
+                    return ticketId;
+                }
+            }
+
+            return this.findTicketIdInRoot(document.body);
         },
 
         findTitleInputRobust() {
@@ -1418,11 +1566,53 @@
             }
         },
 
-        waitForDropdownSearchInput(timeout = 1200) {
+        findVisibleDropdown() {
+            const dropdowns = document.querySelectorAll('.el-select-dropdown');
+            const visible = [];
+            for (const dropdown of dropdowns) {
+                try {
+                    const style = window.getComputedStyle(dropdown);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                        visible.push(dropdown);
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            if (visible.length === 0) return null;
+            if (visible.length === 1) return visible[0];
+            const preferred = visible.find(d => d.classList.contains('custom-down-select-search'));
+            return preferred || visible[visible.length - 1];
+        },
+
+        findVisibleThirdLinkDropdown() {
+            const dropdowns = document.querySelectorAll('.el-select-dropdown.custom-down-select-search');
+            for (const dropdown of dropdowns) {
+                try {
+                    const style = window.getComputedStyle(dropdown);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                        return dropdown;
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            return null;
+        },
+
+        findDropdownForPicker(options = {}) {
+            if (options.preferThirdLink) {
+                const d = this.findVisibleThirdLinkDropdown();
+                if (d) return d;
+            }
+            return this.findVisibleDropdown();
+        },
+
+        waitForDropdownSearchInput(timeout = 1200, options = {}) {
             return new Promise(resolve => {
                 const startTime = Date.now();
                 const check = () => {
-                    const dropdown = document.querySelector('.el-select-dropdown:not([style*="display: none"])');
+                    const dropdown = this.findDropdownForPicker(options);
                     if (dropdown) {
                         const input = dropdown.querySelector('input[type="text"]');
                         if (input) {
@@ -1441,8 +1631,52 @@
             });
         },
 
-        async fillDropdownSearch(text, logger, delay = 100) {
-            const searchInput = await this.waitForDropdownSearchInput();
+        async selectDropdownOption(text, logger, timeout = 1200, options = {}) {
+            const startTime = Date.now();
+            const normalizedTarget = this.normalizeFieldLabel(text).toLowerCase();
+
+            while (Date.now() - startTime < timeout) {
+                const dropdown = this.findDropdownForPicker(options);
+                if (dropdown) {
+                    const items = Array.from(dropdown.querySelectorAll('.el-select-dropdown__item')).filter(item => {
+                        try {
+                            const style = window.getComputedStyle(item);
+                            return !item.classList.contains('disabled') &&
+                                !item.classList.contains('is-disabled') &&
+                                style.display !== 'none' &&
+                                style.visibility !== 'hidden';
+                        } catch (e) {
+                            return false;
+                        }
+                    });
+
+                    if (items.length > 0) {
+                        const exactMatch = items.find(item => this.normalizeFieldLabel(item.textContent).toLowerCase() === normalizedTarget);
+                        const partialMatch = items.find(item => {
+                            const normalizedText = this.normalizeFieldLabel(item.textContent).toLowerCase();
+                            return normalizedText.includes(normalizedTarget) || normalizedTarget.includes(normalizedText);
+                        });
+                        // 不要用「当前已选中」项作为回退；无精确/模糊匹配时不点 items[0]，避免误选
+                        const candidate = exactMatch || partialMatch;
+                        if (candidate) {
+                            candidate.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            candidate.click();
+
+                            if (logger) logger.success('选择下拉选项: ' + candidate.textContent.trim());
+                            return true;
+                        }
+                    }
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 80));
+            }
+
+            if (logger) logger.warn('未找到可点击的下拉选项: ' + text);
+            return false;
+        },
+
+        async fillDropdownSearch(text, logger, delay = 100, options = {}) {
+            const searchInput = await this.waitForDropdownSearchInput(1200, options);
             if (!searchInput) {
                 if (logger) logger.warn('未找到下拉搜索框');
                 return false;
@@ -1462,8 +1696,10 @@
                 searchInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: text[0] || 'a' }));
                 searchInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: text[text.length - 1] || 'a' }));
 
-                if (logger) logger.success('填充下拉框: ' + text);
-                return true;
+                await new Promise(resolve => setTimeout(resolve, delay));
+                const selected = await this.selectDropdownOption(text, logger, 1200, options);
+                if (selected && logger) logger.success('填充下拉框: ' + text);
+                return selected;
             } catch (e) {
                 if (logger) logger.error('下拉框填充失败: ' + e.message);
                 return false;
@@ -1498,8 +1734,17 @@
             return '';
         },
 
-        extractContentWithImages(element) {
+        extractContentWithImages(element, options = {}) {
+            const {
+                stripLabelPattern = /^(内部描述[\*\s]*[：:]?\s*)/i
+            } = options;
+
             const clone = element.cloneNode(true);
+            const lineBreakTags = clone.querySelectorAll('br');
+            lineBreakTags.forEach(br => {
+                br.parentNode.replaceChild(document.createTextNode('\n'), br);
+            });
+
             const images = clone.querySelectorAll('img');
             images.forEach(img => {
                 const src = img.src || img.getAttribute('data-src');
@@ -1528,8 +1773,213 @@
             }
 
             let text = textParts.join('\n');
-            text = text.replace(/^(内部描述[\*\s]*[：:]?\s*)/i, '');
+            if (stripLabelPattern) {
+                text = text.replace(stripLabelPattern, '');
+            }
             return text.trim();
+        },
+
+        normalizeFieldLabel(text) {
+            return (text || '').replace(/\s+/g, '').trim();
+        },
+
+        findThirdLinkFieldRow(labelTexts = []) {
+            const normalizedTargets = labelTexts.map(label => this.normalizeFieldLabel(label));
+            const thirdLinkSection = document.querySelector('.tabDetail-item.thirdLink');
+            if (!thirdLinkSection) return null;
+
+            const rows = thirdLinkSection.querySelectorAll('.tabDetail-item-in');
+            for (const row of rows) {
+                const titleNode = row.querySelector('.title-of-work-order');
+                const titleText = this.normalizeFieldLabel(titleNode ? titleNode.textContent : '');
+                if (!titleText) continue;
+                const hit = normalizedTargets.some(t => titleText === t || titleText.startsWith(t.replace(/\*+$/, '')));
+                if (hit) {
+                    return row;
+                }
+            }
+            return null;
+        },
+
+        findThirdLinkFieldInput(labelTexts = []) {
+            const row = this.findThirdLinkFieldRow(labelTexts);
+            if (!row) return null;
+            return row.querySelector('.detail input.el-input__inner, .detail input[type="text"], .detail input');
+        },
+
+        getThirdLinkFieldDisplayValue(labelTexts = []) {
+            const input = this.findThirdLinkFieldInput(labelTexts);
+            if (!input) return '';
+            const v = (input.value || '').trim();
+            if (v) return v;
+            const ph = (input.getAttribute('placeholder') || '').trim();
+            if (ph && ph !== '请选择') return ph;
+            return '';
+        },
+
+        channelDisplayMatchesDesired(displayValue, desiredChannel) {
+            const d = this.normalizeFieldLabel(desiredChannel || '');
+            const c = this.normalizeFieldLabel(displayValue || '');
+            if (!d) return true;
+            if (!c || c === '请选择') return false;
+            const wantFull = d.includes('全服');
+            const wantTest = d.includes('测服');
+            const curFull = c.includes('全服');
+            const curTest = c.includes('测服');
+            if (wantFull || wantTest) {
+                if (wantFull && curFull) return true;
+                if (wantTest && curTest) return true;
+                return false;
+            }
+            return c === d;
+        },
+
+        async openThirdLinkElSelectDropdown(labelTexts, fieldName, logFn) {
+            const maxAttempts = 4;
+            const log = typeof logFn === 'function' ? logFn : () => {};
+            const pickerOpts = { preferThirdLink: true };
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                const input = this.findThirdLinkFieldInput(labelTexts);
+                if (!input) {
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    continue;
+                }
+
+                const selectEl = input.closest('.el-select');
+                const scrollTarget = selectEl || input;
+                scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                const waitOpen = () => this.waitForDropdownSearchInput(1500, pickerOpts);
+
+                input.click();
+                let opened = await waitOpen();
+                if (!opened && selectEl) {
+                    const caret = selectEl.querySelector('.el-select__caret');
+                    if (caret) {
+                        caret.click();
+                        opened = await waitOpen();
+                    }
+                }
+                if (!opened) {
+                    const clickable = selectEl || input.closest('.el-input') || input;
+                    ['mousedown', 'mouseup', 'click'].forEach(eventType => {
+                        clickable.dispatchEvent(new MouseEvent(eventType, { bubbles: true, cancelable: true }));
+                    });
+                    input.focus();
+                    opened = await waitOpen();
+                }
+
+                if (opened) {
+                    log(fieldName + ' 下拉框已展开');
+                    return true;
+                }
+
+                log(fieldName + ' 下拉框未展开，重试 ' + attempt + '/' + maxAttempts);
+                await new Promise(resolve => setTimeout(resolve, 250));
+            }
+
+            return false;
+        },
+
+        findFormItemByLabels(labelTexts = []) {
+            if (!Array.isArray(labelTexts) || labelTexts.length === 0) return null;
+            const expected = labelTexts.map(label => this.normalizeFieldLabel(label));
+            const formItems = document.querySelectorAll('.el-form-item');
+
+            for (const formItem of formItems) {
+                const labelNode = formItem.querySelector('.el-form-item__label, label');
+                const labelText = this.normalizeFieldLabel(labelNode ? labelNode.textContent : '');
+                if (labelText && expected.includes(labelText)) {
+                    return formItem;
+                }
+            }
+
+            return null;
+        },
+
+        extractTextFromOuterHTMLRoot(rootElement, options = {}) {
+            if (!rootElement) return '';
+
+            const {
+                contentSelectors = [],
+                stripLabelPattern = null,
+                minLength = 3
+            } = options;
+
+            const html = rootElement.outerHTML || rootElement.innerHTML || '';
+            if (!html) return '';
+
+            try {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const scope = doc.body;
+
+                const candidateRoots = [];
+                for (const selector of contentSelectors) {
+                    const found = scope.querySelector(selector);
+                    if (found) {
+                        candidateRoots.push(found);
+                    }
+                }
+
+                if (candidateRoots.length === 0 && scope.firstElementChild) {
+                    candidateRoots.push(scope.firstElementChild);
+                }
+
+                for (const candidate of candidateRoots) {
+                    const text = this.extractContentWithImages(candidate, { stripLabelPattern });
+                    if (text && text.length >= minLength) {
+                        return text;
+                    }
+                }
+            } catch (e) {
+                console.error('[SharedUtils] outerHTML 提取失败:', e);
+            }
+
+            return '';
+        },
+
+        extractTextByFormLabels(labelTexts = [], options = {}) {
+            const formItem = this.findFormItemByLabels(labelTexts);
+            if (!formItem) return '';
+
+            const roots = [
+                formItem.closest('.el-col'),
+                formItem,
+                formItem.querySelector('.el-form-item__content'),
+                formItem.querySelector('.show-info'),
+                formItem.querySelector('.text')
+            ].filter(Boolean);
+
+            for (const root of roots) {
+                const extracted = this.extractTextFromOuterHTMLRoot(root, options);
+                if (extracted) {
+                    return extracted;
+                }
+            }
+
+            return '';
+        },
+
+        async copyText(text) {
+            if (!text) return false;
+
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (e) {
+                console.warn('[SharedUtils] navigator.clipboard 复制失败，尝试 GM_setClipboard:', e.message);
+            }
+
+            try {
+                GM_setClipboard(text);
+                return true;
+            } catch (e) {
+                console.error('[SharedUtils] GM_setClipboard 复制失败:', e);
+                return false;
+            }
         }
     };
 
@@ -1555,8 +2005,10 @@
             fullServerLists: ["【2.1.40全服】：", "【2.1.18全服】：", "【40.2全服】：", "【18.2全服】："],
             testServerLists: ["【40.2测服】：", "【2.1.52测服】：", "【1.9.88测服】：", "【2.1.50测服】："],
             fullServer: "【2.1.60全服】：",
-            testServer: "【2.1.64测服】：",
-            debounceDelay: 300
+            testServer: "【2.1.66测服】：",
+            debounceDelay: 300,
+            /** 关联第三方「创建人*」自动选择的目标姓名 */
+            thirdLinkCreatorName: '梁磊'
         };
 
         let state = {
@@ -1571,6 +2023,7 @@
             isProcessing: false,
             isTitleProcessing: false,
             channelFilled: false,
+            creatorFilled: false,
             iterationFilled: false,
             focusListenersAttached: false,
             abnormalLoadRetries: 0,
@@ -1603,6 +2056,33 @@
         }
 
         function extractInternalDescription() {
+            const outerHtmlExtracted = SharedUtils.extractTextByFormLabels(
+                ['内部描述', '内部描述*'],
+                {
+                    contentSelectors: [
+                        '.el-form-item__content .show-info .text',
+                        '.el-form-item__content .show-info',
+                        '.el-form-item__content .text',
+                        '.el-form-item__content',
+                        '.show-info .text',
+                        '.show-info',
+                        '.text',
+                        'p'
+                    ],
+                    stripLabelPattern: /^(内部描述[\*\s]*[：:]?\s*)/i
+                }
+            );
+
+            if (outerHtmlExtracted) {
+                state.copiedText = outerHtmlExtracted;
+                state.lastExtractedLength = outerHtmlExtracted.length;
+                if (CONFIG.debug) {
+                    console.log('[普通工单] 通过 outerHTML 提取内部描述成功，长度:', outerHtmlExtracted.length);
+                }
+                logger.success('通过 outerHTML 提取内部描述成功，长度: ' + outerHtmlExtracted.length);
+                return outerHtmlExtracted;
+            }
+
             const allElements = document.querySelectorAll('p, div, span, label');
             let internalDescEl = null;
             let descEl = null;
@@ -1658,7 +2138,9 @@
                 return extractViaInnerText();
             }
 
-            const extracted = SharedUtils.extractContentWithImages(contentEl);
+            const extracted = SharedUtils.extractContentWithImages(contentEl, {
+                stripLabelPattern: /^(内部描述[\*\s]*[：:]?\s*)/i
+            });
             state.copiedText = extracted;
             state.lastExtractedLength = extracted.length;
             log('提取内部描述成功，长度:', extracted.length);
@@ -1740,8 +2222,6 @@
             log('尝试通过DOM选择器提取');
 
             const selectors = [
-                '.el-form-item:has(.el-form-item__label:contains("内部描述")) .el-form-item__content',
-                '.detail:has(+ .title-of-work-order:contains("内部描述"))',
                 '[class*="internal-desc"]',
                 '[class*="internalDescription"]',
                 '.ql-editor',
@@ -1864,131 +2344,6 @@
             });
         }
 
-        function translateViaPopcat(text) {
-            return new Promise((resolve, reject) => {
-                // 自动检测目标语言，如果是英文原文则翻译为中文
-                // Popcat 接口很简单，我们尝试强制指定源语言（虽然它可能不完全支持）或者直接只传目标语言
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    // Popcat 不支持自动检测英文转中文，如果原文是英文，它可能报错
-                    // 我们尝试使用更通用的 API 参数，或者如果 Popcat 确实太弱，就只能接受它的局限性
-                    // 这里我们尝试将 text 参数进行更严格的编码，并增加错误处理
-                    url: 'https://api.popcat.xyz/translate?to=zh&text=' + encodeURIComponent(text),
-                    timeout: CONFIG.translateTimeoutOther,
-                    onload: (response) => {
-                        try {
-                            const result = JSON.parse(response.responseText);
-                            if (result.translated) {
-                                if (result.translated.includes('is not supported')) {
-                                    reject(new Error('Language not supported by Popcat'));
-                                } else {
-                                    resolve(result.translated);
-                                }
-                            } else if (result.error) {
-                                reject(new Error('Popcat error: ' + result.error));
-                            } else {
-                                reject(new Error('Popcat unknown error'));
-                            }
-                        } catch (e) {
-                            reject(e);
-                        }
-                    },
-                    onerror: reject,
-                    ontimeout: reject
-                });
-            });
-        }
-
-        // DeepLX (Mirror) 经常不稳定，我们尝试增加另一个备用镜像或优化错误提示
-        function translateViaDeepLX_Mirror(text) {
-            return new Promise((resolve, reject) => {
-                // 尝试另一个更稳定的 DeepLX 公共实例（如果可用），或者保留当前但优化错误处理
-                // 目前 api.deeplx.fun 是比较知名的，如果它报错，可能是请求频率过高或暂不可用
-                // 我们尝试切换到另一个公共镜像（如果有的话），或者保留当前并建议用户稍后重试
-
-                // 备用镜像列表
-                const mirrors = [
-                    'https://api.deeplx.fun/translate',
-                    'https://api.deeplx.org/translate' // 官方接口，虽然有时被墙但值得作为备选
-                ];
-
-                let currentMirror = 0;
-
-                function tryNext() {
-                    if (currentMirror >= mirrors.length) {
-                        reject(new Error('All DeepLX mirrors failed'));
-                        return;
-                    }
-
-                    const url = mirrors[currentMirror];
-                    GM_xmlhttpRequest({
-                        method: 'POST',
-                        url: url,
-                        headers: { 'Content-Type': 'application/json' },
-                        data: JSON.stringify({ text: text, source_lang: 'auto', target_lang: 'ZH' }),
-                        timeout: CONFIG.translateTimeoutOther,
-                        onload: (response) => {
-                            try {
-                                const result = JSON.parse(response.responseText);
-                                if (result.code === 200 && result.data) {
-                                    resolve(result.data);
-                                } else {
-                                    // 当前镜像失败，尝试下一个
-                                    currentMirror++;
-                                    tryNext();
-                                }
-                            } catch (e) {
-                                currentMirror++;
-                                tryNext();
-                            }
-                        },
-                        onerror: () => {
-                            currentMirror++;
-                            tryNext();
-                        },
-                        ontimeout: () => {
-                            currentMirror++;
-                            tryNext();
-                        }
-                    });
-                }
-
-                tryNext();
-            });
-        }
-
-        function translateViaMicrosoft(text) {
-            return new Promise((resolve, reject) => {
-                // Microsoft Edge Translator API (Unofficial, No Key Required)
-                const url = 'https://api-edge.cognitive.microsofttranslator.com/translate?from=&to=zh-Hans&api-version=3.0&includeSentenceLength=true';
-                GM_xmlhttpRequest({
-                    method: 'POST',
-                    url: url,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer', // Edge API sometimes works without bearer or with a dummy one
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0'
-                    },
-                    data: JSON.stringify([{ "Text": text }]),
-                    timeout: CONFIG.translateTimeoutOther,
-                    onload: (response) => {
-                        try {
-                            const result = JSON.parse(response.responseText);
-                            if (result && result[0] && result[0].translations && result[0].translations[0]) {
-                                resolve(result[0].translations[0].text);
-                            } else {
-                                reject(new Error('Microsoft API format error'));
-                            }
-                        } catch (e) {
-                            reject(e);
-                        }
-                    },
-                    onerror: reject,
-                    ontimeout: reject
-                });
-            });
-        }
-
         function translateViaGLM4Flash(text) {
             return new Promise((resolve, reject) => {
                 let apiKey = GM_getValue('glm_api_key_v1', '');
@@ -2043,6 +2398,7 @@
             if (!UI) return;
 
             const container = document.createElement('div');
+            container.className = 'ai-translation-panel';
             container.style.cssText = 'margin-top: 6px; padding: 8px; background: #fff; border-radius: 6px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.04);';
 
             const origDiv = document.createElement('div');
@@ -2142,7 +2498,7 @@
             replaceBtn.onclick = () => {
                 const input = SharedUtils.findTitleInputRobust();
                 if (input) {
-                    let newTitle = state.leftHeading + editInput.value.trim() + ' ' + originalText;
+                    const newTitle = buildTitleFromContent(originalText, editInput.value.trim());
 
                     const success = SharedUtils.simulateInputValue(input, newTitle);
                     if (success) {
@@ -2169,15 +2525,84 @@
             logger.custom(container);
         }
 
-        async function translateText(text) {
-            if (state.translateCount >= CONFIG.translateDailyLimit) {
-                log('已达翻译次数上限');
-                return text;
+        function normalizeTranslatedText(text) {
+            let normalized = (text || '').trim();
+            if (!normalized) return '';
+            if (CONFIG.removeTrailingPunctuation) {
+                normalized = normalized.replace(/[。.!?！？]+$/, '');
+            }
+            return normalized.replace(/^["“'‘]+|["”'’]+$/g, '').trim();
+        }
+
+        function buildTitleFromContent(contentText, translatedText = '') {
+            const original = (contentText || '').trim();
+            const translated = normalizeTranslatedText(translatedText);
+
+            if (!original) {
+                return state.leftHeading + translated;
             }
 
-            if (SharedUtils.hasChinese(text)) {
-                log('文本已包含中文，跳过翻译');
-                return text;
+            if (!translated || translated === original) {
+                return state.leftHeading + original;
+            }
+
+            return state.leftHeading + translated + ' ' + original;
+        }
+
+        function buildTranslationPanelData(originalText, successfulResults = [], failedResults = [], options = {}) {
+            const {
+                includeOriginal = false,
+                originalLabel = '原文保留'
+            } = options;
+
+            const panelData = [];
+            const seen = new Set();
+
+            const pushSuccessRow = (name, text) => {
+                const cleaned = normalizeTranslatedText(text);
+                if (!cleaned || seen.has(cleaned)) return;
+                seen.add(cleaned);
+                panelData.push({ name, success: true, text: cleaned });
+            };
+
+            if (includeOriginal) {
+                pushSuccessRow(originalLabel, originalText);
+            }
+
+            for (const result of successfulResults) {
+                pushSuccessRow(result.name, result.text);
+            }
+
+            for (const result of failedResults) {
+                panelData.push({ name: result.name, success: false, error: result.error });
+            }
+
+            return panelData;
+        }
+
+        async function translateText(text) {
+            const sourceText = (text || '').trim();
+            if (!sourceText) return '';
+
+            const containsChinese = SharedUtils.hasChinese(sourceText);
+            const containsTraditionalChinese = SharedUtils.hasTraditionalChinese(sourceText);
+
+            if (state.translateCount >= CONFIG.translateDailyLimit) {
+                log('已达翻译次数上限');
+                renderTranslationLogPanel(sourceText, buildTranslationPanelData(sourceText, [], [], {
+                    includeOriginal: true,
+                    originalLabel: '原文保留'
+                }));
+                return sourceText;
+            }
+
+            if (containsChinese && !containsTraditionalChinese) {
+                log('文本已包含简体中文，跳过外部翻译但保留交互面板');
+                renderTranslationLogPanel(sourceText, buildTranslationPanelData(sourceText, [], [], {
+                    includeOriginal: true,
+                    originalLabel: '原文保留'
+                }));
+                return sourceText;
             }
 
             const translators = [
@@ -2189,7 +2614,7 @@
             const promises = translators.map(t => {
                 return new Promise((resolve) => {
                     const timer = setTimeout(() => resolve({ name: t.name, success: false, error: 'timeout' }), t.timeout);
-                    t.fn(text).then(res => {
+                    t.fn(sourceText).then(res => {
                         clearTimeout(timer);
                         resolve({ name: t.name, success: true, text: res });
                     }).catch(err => {
@@ -2224,43 +2649,21 @@
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 }
 
-                const successful = allResults.filter(r => r.success && r.text && r.text !== text);
+                const successful = allResults.filter(r => r.success && r.text && normalizeTranslatedText(r.text) !== sourceText);
+                const failed = allResults.filter(r => !r.success);
 
                 if (successful.length > 0) {
                     state.translateCount++;
+                }
 
-                    // 构建面板数据：包含成功的结果和失败的错误信息
-                    const panelData = [];
-                    const seen = new Set();
+                const panelData = buildTranslationPanelData(sourceText, successful, failed, {
+                    includeOriginal: containsTraditionalChinese || successful.length === 0,
+                    originalLabel: containsTraditionalChinese ? '原文繁中' : '原文保留'
+                });
 
-                    // 先加入成功的
-                    for (const r of successful) {
-                        let cleanText = r.text;
-                        if (CONFIG.removeTrailingPunctuation) {
-                            cleanText = cleanText.replace(/[。.!?！？]+$/, '');
-                        }
-                        // 额外清洗引号
-                        cleanText = cleanText.replace(/^["“'‘]+|["”'’]+$/g, '');
-
-                        if (!seen.has(cleanText)) {
-                            seen.add(cleanText);
-                            panelData.push({ name: r.name, success: true, text: cleanText });
-                        } else {
-                            // 如果结果重复，但也记录一下来源名（可选，为了简洁这里合并）
-                            // 也可以选择 r.name + '(同上)'
-                        }
-                    }
-
-                    // 再加入失败的（可选，如果用户想看）
-                    const failed = allResults.filter(r => !r.success);
-                    for (const r of failed) {
-                        panelData.push({ name: r.name, success: false, error: r.error });
-                    }
-
-                    if (panelData.length > 0) {
-                        log('生成多源翻译交互面板');
-                        renderTranslationLogPanel(text, panelData);
-                    }
+                if (panelData.length > 0) {
+                    log('生成多源翻译交互面板');
+                    renderTranslationLogPanel(sourceText, panelData);
                 } else {
                     log('所有翻译源均失败或未返回有效结果');
                 }
@@ -2269,13 +2672,9 @@
             const bestText = await firstSuccessPromise;
 
             if (bestText) {
-                let cleanBest = bestText;
-                if (CONFIG.removeTrailingPunctuation) {
-                    cleanBest = cleanBest.replace(/[。.!?！？]+$/, '');
-                }
-                return cleanBest;
+                return normalizeTranslatedText(bestText);
             }
-            return text;
+            return sourceText;
         }
 
         async function processTitleWithRetry() {
@@ -2302,8 +2701,14 @@
 
                         const colonMatch = currentValue.match(/[：:]/);
                         if (!colonMatch) {
-                            const newTitle = state.leftHeading + currentValue;
-                            log('标题中未找到冒号，直接插入前缀:', newTitle);
+                            const contentPart = currentValue.trim();
+                            let translatedContent = '';
+                            if (contentPart) {
+                                log('标题中未找到冒号，按完整标题内容进入翻译流程:', contentPart);
+                                translatedContent = await translateText(contentPart);
+                            }
+                            const newTitle = buildTitleFromContent(contentPart, translatedContent);
+                            log('标题中未找到冒号，应用新标题:', newTitle);
                             const success = SharedUtils.simulateInputValue(input, newTitle);
                             if (success) {
                                 state.hasProcessedTitle = true;
@@ -2333,22 +2738,14 @@
                             const contentPart = currentValue.substring(colonIndex + 1).trim();
                             let translatedContent = '';
 
-                            if (contentPart && !SharedUtils.hasChinese(contentPart)) {
+                            if (contentPart) {
                                 log('开始翻译标题内容:', contentPart);
                                 translatedContent = await translateText(contentPart);
-                                if (CONFIG.removeTrailingPunctuation) {
-                                    translatedContent = translatedContent.replace(/[。.!?！？]+$/, '');
-                                }
                             } else {
-                                log('内容包含中文，跳过翻译');
+                                log('标题内容为空，跳过翻译');
                             }
 
-                            let newTitle;
-                            if (translatedContent) {
-                                newTitle = state.leftHeading + translatedContent + ' ' + contentPart;
-                            } else {
-                                newTitle = state.leftHeading + contentPart;
-                            }
+                            const newTitle = buildTitleFromContent(contentPart, translatedContent);
 
                             log('应用新标题:', newTitle);
                             if (isOldPrefix) {
@@ -2388,6 +2785,87 @@
             if (success) state.iterationFilled = true;
         }
 
+        async function handleCreatorFocus() {
+            if (state.creatorFilled) return;
+            const name = CONFIG.thirdLinkCreatorName;
+            log('创建人输入框获得焦点，准备填充:', name);
+            const success = await SharedUtils.fillDropdownSearch(name, logger, 150, { preferThirdLink: true });
+            if (success) state.creatorFilled = true;
+        }
+
+        async function autoFillThirdLinkField(labelTexts = [], value = '', stateKey = '', fieldName = '') {
+            if (!value) {
+                log(fieldName + ' 缺少目标值，跳过自动处理');
+                return false;
+            }
+
+            if (state[stateKey]) {
+                return true;
+            }
+
+            const opened = await SharedUtils.openThirdLinkElSelectDropdown(labelTexts, fieldName, (msg) => {
+                log(msg);
+            });
+            if (!opened) {
+                log(fieldName + ' 下拉框自动展开失败，保留焦点监听兜底');
+                logger.warn(fieldName + ' 下拉框自动展开失败');
+                return false;
+            }
+
+            const success = await SharedUtils.fillDropdownSearch(value, logger, 150, { preferThirdLink: true });
+            if (success) {
+                state[stateKey] = true;
+                log(fieldName + ' 自动填充成功:', value);
+                logger.success(fieldName + ' 自动填充成功: ' + value);
+                return true;
+            }
+
+            log(fieldName + ' 自动填充失败，保留焦点监听兜底');
+            logger.warn(fieldName + ' 自动填充失败');
+            return false;
+        }
+
+        function ensureNormalThirdLinkTargetsReady() {
+            if (!state.faxiandiedai) {
+                const fallbackIteration = state.versionNumber || SharedUtils.extractVersion(state.leftHeading);
+                if (fallbackIteration) {
+                    state.faxiandiedai = fallbackIteration;
+                    log('\u53d1\u73b0\u8fed\u4ee3\u76ee\u6807\u503c\u7f3a\u5931\uff0c\u5df2\u6309\u7248\u672c\u53f7\u56de\u586b:', state.faxiandiedai);
+                    logger.warn('\u53d1\u73b0\u8fed\u4ee3\u76ee\u6807\u503c\u7f3a\u5931\uff0c\u6309\u7248\u672c\u53f7\u56de\u586b: ' + state.faxiandiedai);
+                }
+            }
+
+            if (!state.channelText && state.leftHeading) {
+                if (state.leftHeading.includes('\u6d4b\u670d')) {
+                    state.channelText = '\u6d4b\u670d';
+                } else if (state.leftHeading.includes('\u5168\u670d')) {
+                    state.channelText = '\u5168\u670d';
+                }
+
+                if (state.channelText) {
+                    log('\u6e20\u9053\u76ee\u6807\u503c\u7f3a\u5931\uff0c\u5df2\u6309\u6807\u9898\u524d\u7f00\u56de\u586b:', state.channelText);
+                    logger.warn('\u6e20\u9053\u76ee\u6807\u503c\u7f3a\u5931\uff0c\u6309\u6807\u9898\u524d\u7f00\u56de\u586b: ' + state.channelText);
+                }
+            }
+        }
+
+        async function processThirdLinkFields() {
+            ensureNormalThirdLinkTargetsReady();
+            await new Promise(resolve => setTimeout(resolve, 400));
+            await autoFillThirdLinkField(['创建人', '创建人*'], CONFIG.thirdLinkCreatorName, 'creatorFilled', '创建人');
+            await autoFillThirdLinkField(['发现迭代', '发现迭代*'], state.faxiandiedai, 'iterationFilled', '发现迭代');
+
+            const desiredCh = state.channelText;
+            const currentCh = SharedUtils.getThirdLinkFieldDisplayValue(['渠道', '渠道*']);
+            if (desiredCh && SharedUtils.channelDisplayMatchesDesired(currentCh, desiredCh)) {
+                log('渠道已是目标值，跳过自动选择:', desiredCh, '(当前:', currentCh || '空', ')');
+                logger.log('渠道已是目标值，跳过: ' + desiredCh);
+                state.channelFilled = true;
+            } else {
+                await autoFillThirdLinkField(['渠道', '渠道*'], state.channelText, 'channelFilled', '渠道');
+            }
+        }
+
         function setupFocusListener() {
             if (state.focusListenersAttached) return;
             log('设置普通工单焦点监听器');
@@ -2403,6 +2881,8 @@
                 const labelText = SharedUtils.findLabelText(target);
                 if (labelText.includes('渠道')) {
                     await handleChannelFocus();
+                } else if (labelText.includes('创建人')) {
+                    await handleCreatorFocus();
                 } else if (labelText.includes('发现迭代')) {
                     await handleIterationFocus();
                 }
@@ -2425,6 +2905,7 @@
             removeFocusListener();
             state.hasProcessedTitle = false;
             state.channelFilled = false;
+            state.creatorFilled = false;
             state.iterationFilled = false;
             state.copiedText = '';
             state.leftHeading = '';
@@ -2484,6 +2965,7 @@
                 }
 
                 await processTitleWithRetry();
+                await processThirdLinkFields();
                 setupFocusListener();
                 log('========== 普通工单处理完成 ==========');
             } catch (e) {
@@ -2493,7 +2975,7 @@
             }
         }
 
-        function handleNormalZoneClick(element) {
+        async function handleNormalZoneClick(element) {
             const titleInput = SharedUtils.findTitleInputRobust();
             const titleValue = titleInput ? titleInput.value || '' : '';
             if (/mcgg/i.test(titleValue)) {
@@ -2501,12 +2983,22 @@
                 return;
             }
 
-            if (!state.copiedText) {
+            let copyText = state.copiedText;
+            if (!copyText) {
+                copyText = await extractInternalDescriptionWithRetry();
+            }
+
+            if (!copyText) {
                 log('无内容可复制');
                 return;
             }
 
-            navigator.clipboard.writeText(state.copiedText).then(() => {
+            SharedUtils.copyText(copyText).then(success => {
+                if (!success) {
+                    logError('复制失败: 剪贴板写入不可用');
+                    return;
+                }
+
                 UI.showZoneSuccess('normal');
                 log('内部描述已复制到剪贴板');
 
@@ -2520,14 +3012,12 @@
                         element.classList.remove('success');
                     }, 1500);
                 }
-            }).catch(err => {
-                logError('复制失败:', err);
             });
         }
 
         function initUI() {
             if (!UI) return;
-            UI.addButton('普通工单', 'btn-normal', async (btn) => {
+            UI.addButton('复制普通工单', 'btn-normal', async (btn) => {
                 handleNormalZoneClick(btn);
             });
             UI.registerZoneCallback('normal', handleNormalZoneClick);
@@ -2639,7 +3129,9 @@
             mcggtestServerLists: ["【MCGG】- 1.2.60：", "【MCGG】- 1.2.58：", "【MCGG】- 1.2.62：", "【MCGG】- 1.2.56："],
             mcggfullServer: "【MCGG】- 1.2.58：",
             mcggtestServer: "【MCGG】- 1.2.60：",
-            debounceDelay: 300
+            debounceDelay: 300,
+            thirdLinkModuleName: '模式独立包（MC2/24年12月后）',
+            thirdLinkCreatorName: '梁磊'
         };
 
         let state = {
@@ -2653,6 +3145,7 @@
             isProcessing: false,
             isTitleProcessing: false,
             channelFilled: false,
+            creatorFilled: false,
             iterationFilled: false,
             moduleFilled: false,
             focusListenersAttached: false,
@@ -2698,6 +3191,7 @@
                 isProcessing: false,
                 isTitleProcessing: false,
                 channelFilled: false,
+                creatorFilled: false,
                 iterationFilled: false,
                 moduleFilled: false,
                 lastProcessTime: 0
@@ -2743,6 +3237,7 @@
                 }
 
                 await processMCGGTitleWithRetry();
+                await processMCGGThirdLinkFields();
                 setupMCGGFocusListener();
                 log('========== MCGG工单处理完成 ==========', 'success');
             } finally {
@@ -2760,6 +3255,30 @@
 
         function extractMCGGInternalDescription() {
             log('开始提取描述内容');
+            const outerHtmlExtracted = SharedUtils.extractTextByFormLabels(
+                ['描述', '描述*'],
+                {
+                    contentSelectors: [
+                        '.el-form-item__content .show-info .text',
+                        '.el-form-item__content .show-info',
+                        '.el-form-item__content .flex-column .text',
+                        '.el-form-item__content .text',
+                        '.el-form-item__content',
+                        '.show-info .text',
+                        '.show-info',
+                        '.text',
+                        'p'
+                    ],
+                    stripLabelPattern: /^(描述\*?[\s：:]*)/i
+                }
+            );
+
+            if (outerHtmlExtracted) {
+                state.copiedText = outerHtmlExtracted.trim();
+                log('通过 outerHTML 提取描述内容成功，长度: ' + state.copiedText.length, 'success');
+                return state.copiedText;
+            }
+
             const allElements = document.querySelectorAll('p, div, span, label');
             let descLabel = null;
 
@@ -2951,15 +3470,82 @@
             }
         }
 
+        async function handleMCGGCreatorFocus() {
+            if (state.creatorFilled) return;
+            const name = CONFIG.thirdLinkCreatorName;
+            log('创建人输入框获得焦点，准备填充: ' + name);
+            const success = await SharedUtils.fillDropdownSearch(name, logger, 150, { preferThirdLink: true });
+            if (success) {
+                state.creatorFilled = true;
+                log('创建人填充成功', 'success');
+            } else {
+                log('创建人填充失败', 'warn');
+            }
+        }
+
         async function handleMCGGModuleFocus() {
             if (state.moduleFilled) return;
-            log('功能模块输入框获得焦点，准备填充: 模式独立包');
-            const success = await SharedUtils.fillDropdownSearch('模式独立包', logger);
+            log('功能模块输入框获得焦点，准备填充: ' + CONFIG.thirdLinkModuleName);
+            const success = await SharedUtils.fillDropdownSearch(CONFIG.thirdLinkModuleName, logger, 100, { preferThirdLink: true });
             if (success) {
                 state.moduleFilled = true;
                 log('功能模块填充成功', 'success');
             } else {
                 log('功能模块填充失败', 'warn');
+            }
+        }
+
+        async function autoFillMCGGThirdLinkField(labelTexts = [], value = '', stateKey = '', fieldName = '') {
+            if (!value) {
+                log(fieldName + ' 缺少目标值，跳过自动处理', 'warn');
+                return false;
+            }
+
+            if (state[stateKey]) {
+                return true;
+            }
+
+            const opened = await SharedUtils.openThirdLinkElSelectDropdown(labelTexts, fieldName, (msg) => log(msg));
+            if (!opened) {
+                log(fieldName + ' 下拉框自动展开失败，保留焦点监听兜底', 'warn');
+                return false;
+            }
+
+            const success = await SharedUtils.fillDropdownSearch(value, logger, 150, { preferThirdLink: true });
+            if (success) {
+                state[stateKey] = true;
+                log(fieldName + ' 自动填充成功: ' + value, 'success');
+                return true;
+            }
+
+            log(fieldName + ' 自动填充失败，保留焦点监听兜底', 'warn');
+            return false;
+        }
+
+        async function processMCGGThirdLinkFields() {
+            await new Promise(resolve => setTimeout(resolve, 400));
+            await autoFillMCGGThirdLinkField(['创建人', '创建人*'], CONFIG.thirdLinkCreatorName, 'creatorFilled', '创建人');
+            await autoFillMCGGThirdLinkField(['发现迭代', '发现迭代*'], state.faxiandiedai, 'iterationFilled', '发现迭代');
+
+            const desiredModule = CONFIG.thirdLinkModuleName;
+            const currentModule = SharedUtils.getThirdLinkFieldDisplayValue(['功能模块', '功能模块*']);
+            const normalizedDesiredModule = SharedUtils.normalizeFieldLabel(desiredModule).toLowerCase();
+            const normalizedCurrentModule = SharedUtils.normalizeFieldLabel(currentModule).toLowerCase();
+            if (normalizedDesiredModule && normalizedCurrentModule &&
+                (normalizedCurrentModule.includes(normalizedDesiredModule) || normalizedDesiredModule.includes(normalizedCurrentModule))) {
+                log('功能模块已是目标值，跳过自动选择: ' + desiredModule + ' (当前: ' + (currentModule || '空') + ')', 'success');
+                state.moduleFilled = true;
+            } else {
+                await autoFillMCGGThirdLinkField(['功能模块', '功能模块*'], desiredModule, 'moduleFilled', '功能模块');
+            }
+
+            const desiredCh = state.channelText;
+            const currentCh = SharedUtils.getThirdLinkFieldDisplayValue(['渠道', '渠道*']);
+            if (desiredCh && SharedUtils.channelDisplayMatchesDesired(currentCh, desiredCh)) {
+                log('渠道已是目标值，跳过自动选择: ' + desiredCh + ' (当前: ' + (currentCh || '空') + ')', 'success');
+                state.channelFilled = true;
+            } else {
+                await autoFillMCGGThirdLinkField(['渠道', '渠道*'], state.channelText, 'channelFilled', '渠道');
             }
         }
 
@@ -2978,6 +3564,8 @@
                 const labelText = SharedUtils.findLabelText(target);
                 if (labelText.includes('渠道')) {
                     await handleMCGGChannelFocus();
+                } else if (labelText.includes('创建人')) {
+                    await handleMCGGCreatorFocus();
                 } else if (labelText.includes('发现迭代')) {
                     await handleMCGGIterationFocus();
                 } else if (labelText.includes('功能模块')) {
@@ -3012,7 +3600,12 @@
                 return;
             }
 
-            navigator.clipboard.writeText(copyText).then(() => {
+            SharedUtils.copyText(copyText).then(success => {
+                if (!success) {
+                    log('复制失败: 剪贴板写入不可用', 'error');
+                    return;
+                }
+
                 UI.showZoneSuccess('mcgg');
                 log('描述已复制到剪贴板', 'success');
 
@@ -3026,14 +3619,12 @@
                         element.classList.remove('success');
                     }, 1500);
                 }
-            }).catch(err => {
-                log('复制失败: ' + err, 'error');
             });
         }
 
         function initUI() {
             if (!UI) return;
-            UI.addButton('MCGG工单', 'btn-mcgg', async (btn) => {
+            UI.addButton('复制MCGG工单', 'btn-mcgg', async (btn) => {
                 handleMcggZoneClick(btn);
             });
             UI.registerZoneCallback('mcgg', handleMcggZoneClick);
@@ -3250,7 +3841,7 @@
 
         function initUI() {
             if (!UI) return;
-            UI.addButton('复制 Task 信息', 'btn-task', (btn) => {
+            UI.addButton('提取客服信息', 'btn-task', (btn) => {
                 handleTaskZoneClick(btn);
             });
             UI.registerZoneCallback('task', handleTaskZoneClick);
@@ -3946,11 +4537,15 @@
             // 轮询结果的间隔（毫秒）
             pollInterval: 500,
             // 轮询最大等待时间（毫秒），飞书重型应用页面加载慢，留足够时间
-            pollMaxWait: 60000,
+            pollMaxWait: 90000,
             // GM_setValue 存储键名（带唯一前缀，避免冲突）
             storageKeyPending: 'feishu_ticket_search_pending_v1',   // AIHelp端写入：待搜索的 Ticket ID
             storageKeyResult: 'feishu_ticket_search_result_v1',      // 飞书端写入：搜索结果
             storageKeyResultTs: 'feishu_ticket_search_result_ts_v1', // 结果时间戳，防止读取旧结果
+            storageKeyHeartbeat: 'feishu_ticket_search_heartbeat_v1', // ?????????????????
+            heartbeatFreshMs: 20000,
+            targetPageSeenGraceMs: 1800000,
+            openLockFreshMs: 45000,
             checkInterval: 500
         };
 
@@ -3990,6 +4585,96 @@
             const msg = args.join(' ');
             console.error('[飞书搜索 错误]', ...args);
             feishuLogger.error(msg);
+        }
+
+        function feishuSearchFmtReq(searchRequestId, message) {
+            if (!searchRequestId) return message;
+            return '[' + searchRequestId + '] ' + message;
+        }
+
+        function clearFeishuPendingRequest() {
+            try {
+                GM_deleteValue(FEISHU_SEARCH_CONFIG.storageKeyPending);
+            } catch (e) {
+                feishuLogError('清理飞书待搜索任务失败:', e.message);
+            }
+        }
+
+        function getFeishuOpenLock() {
+            try {
+                return GM_getValue('feishu_ticket_search_open_lock_v1', null);
+            } catch (e) {
+                feishuLogError('读取飞书目标页打开锁失败:', e.message);
+                return null;
+            }
+        }
+
+        function setFeishuOpenLock(data) {
+            try {
+                GM_setValue('feishu_ticket_search_open_lock_v1', data);
+            } catch (e) {
+                feishuLogError('写入飞书目标页打开锁失败:', e.message);
+            }
+        }
+
+        function clearFeishuOpenLock() {
+            try {
+                GM_deleteValue('feishu_ticket_search_open_lock_v1');
+            } catch (e) {
+                feishuLogError('清理飞书目标页打开锁失败:', e.message);
+            }
+        }
+
+        function hasFreshFeishuOpenLock() {
+            const lockData = getFeishuOpenLock();
+            if (!lockData || typeof lockData.ts !== 'number') return false;
+            return (Date.now() - lockData.ts) < FEISHU_SEARCH_CONFIG.openLockFreshMs;
+        }
+
+        function isFeishuTargetPageAlive() {
+            try {
+                const heartbeat = GM_getValue(FEISHU_SEARCH_CONFIG.storageKeyHeartbeat, 0);
+                return typeof heartbeat === 'number' && heartbeat > 0 &&
+                    (Date.now() - heartbeat) < FEISHU_SEARCH_CONFIG.heartbeatFreshMs;
+            } catch (e) {
+                feishuLogError('???????????:', e.message);
+                return false;
+            }
+        }
+
+        function isFeishuTargetPageRecentlySeen() {
+            try {
+                const heartbeat = GM_getValue(FEISHU_SEARCH_CONFIG.storageKeyHeartbeat, 0);
+                return typeof heartbeat === 'number' && heartbeat > 0 &&
+                    (Date.now() - heartbeat) < FEISHU_SEARCH_CONFIG.targetPageSeenGraceMs;
+            } catch (e) {
+                feishuLogError('读取飞书目标页最近活动时间失败:', e.message);
+                return false;
+            }
+        }
+
+        function openFeishuTargetPageInBackground(searchRequestId) {
+            const reqPrefix = feishuSearchFmtReq(searchRequestId, '');
+            if (typeof GM_openInTab === 'function') {
+                try {
+                    feishuSearchState.feishuTabRef = GM_openInTab(FEISHU_SEARCH_CONFIG.feishuTargetUrl, {
+                        active: false,
+                        insert: true,
+                        setParent: true
+                    });
+                    feishuLog(reqPrefix + '已通过 GM_openInTab 在后台拉起飞书目标页');
+                    return true;
+                } catch (e) {
+                    feishuLogError(reqPrefix + 'GM_openInTab 后台打开失败: ' + e.message);
+                }
+            }
+
+            feishuSearchState.feishuTabRef = window.open(
+                FEISHU_SEARCH_CONFIG.feishuTargetUrl,
+                'feishu_ticket_search_tab'
+            );
+            feishuLog(reqPrefix + 'GM_openInTab 不可用，已退回 window.open 唤起目标页');
+            return true;
         }
 
         /**
@@ -4033,7 +4718,7 @@
                 container.innerHTML = `✅ 未在飞书项目中搜到 Ticket ID：<strong>${ticketId}</strong>`;
             } else if (status === 'not_logged_in') {
                 container.style.cssText += 'background: #fffbe6; border: 1px solid #ffe58f; color: #d46b08;';
-                container.innerHTML = `⚠️ 飞书未登录，请先<a href="${FEISHU_SEARCH_CONFIG.feishuTargetUrl}" target="_blank" style="color:#d46b08;text-decoration:underline;">登录飞书</a>后重试`;
+                container.innerHTML = `⚠️ 飞书未登录，请先<a href="${FEISHU_SEARCH_CONFIG.feishuTargetUrl}" target="_blank" style="color:#d46b08;text-decoration:underline;">登录飞书</a>后重试。<span style="display:block;margin-top:4px;color:#8c8c8c;font-size:10px;">若已在后台打开目标项目页，请切换到该标签页待页面加载完成；误报时可忽略本提示。</span>`;
             } else if (status === 'searching') {
                 container.style.cssText += 'background: #e6f4ff; border: 1px solid #91caff; color: #0958d9;';
                 container.textContent = `🔍 正在飞书项目中搜索 Ticket ID：${ticketId}...`;
@@ -4067,11 +4752,11 @@
          * @param {string} ticketId - 正在搜索的 Ticket ID
          * @param {number} requestTs - 本次搜索请求的时间戳（用于过滤旧结果）
          */
-        function startPollResult(ticketId, requestTs) {
+        function startPollResult(ticketId, requestTs, searchRequestId) {
             stopPollResult();
             feishuSearchState.pollStartTime = Date.now();
 
-            feishuLog('开始轮询飞书搜索结果，Ticket ID:', ticketId);
+            feishuLog(feishuSearchFmtReq(searchRequestId, '开始轮询飞书搜索结果，Ticket ID: ' + ticketId + ' | reqTs: ' + requestTs));
 
             feishuSearchState.pollTimer = setInterval(() => {
                 try {
@@ -4081,7 +4766,8 @@
                         // 检查是否超时
                         if (Date.now() - feishuSearchState.pollStartTime > FEISHU_SEARCH_CONFIG.pollMaxWait) {
                             stopPollResult();
-                            feishuLogError('等待飞书搜索结果超时（' + (FEISHU_SEARCH_CONFIG.pollMaxWait / 1000) + '秒）');
+                            clearFeishuOpenLock();
+                            feishuLogError(feishuSearchFmtReq(searchRequestId, '等待飞书搜索结果超时（' + (FEISHU_SEARCH_CONFIG.pollMaxWait / 1000) + '秒）'));
                             showSearchResultInLog(ticketId, 'error', '等待超时，请检查飞书标签页是否正常加载');
                         }
                         return;
@@ -4090,7 +4776,9 @@
                     // 有新结果
                     stopPollResult();
                     const result = GM_getValue(FEISHU_SEARCH_CONFIG.storageKeyResult, null);
-                    feishuLog('收到飞书搜索结果:', JSON.stringify(result));
+                    clearFeishuPendingRequest();
+                    clearFeishuOpenLock();
+                    feishuLog(feishuSearchFmtReq(searchRequestId, '收到飞书搜索结果: ' + JSON.stringify(result)));
 
                     if (!result) {
                         showSearchResultInLog(ticketId, 'error', '结果数据为空');
@@ -4108,7 +4796,7 @@
                     }
                 } catch (e) {
                     stopPollResult();
-                    feishuLogError('轮询结果异常:', e.message);
+                    feishuLogError(feishuSearchFmtReq(searchRequestId, '轮询结果异常: ' + e.message));
                 }
             }, FEISHU_SEARCH_CONFIG.pollInterval);
         }
@@ -4121,51 +4809,48 @@
         function triggerFeishuSearch(ticketId) {
             if (!ticketId) return;
 
-            feishuLog('触发飞书搜索，Ticket ID:', ticketId);
+            if (feishuSearchState.pollTimer && ticketId === feishuSearchState.lastExtractedId) {
+                feishuLog('相同 Ticket ID 已在搜索中，跳过重复触发:', ticketId);
+                return;
+            }
 
             const requestTs = Date.now();
+            const searchRequestId = 'fs_' + requestTs + '_' + Math.random().toString(36).slice(2, 10);
 
-            // 1. 写入待搜索的 Ticket ID 和时间戳
+            feishuLog(feishuSearchFmtReq(searchRequestId, '触发飞书搜索，Ticket ID: ' + ticketId + ' | reqTs: ' + requestTs));
+
+            // 1. 写入待搜索的 Ticket ID、时间戳与请求 ID（与飞书端控制台日志对照）
             GM_setValue(FEISHU_SEARCH_CONFIG.storageKeyPending, {
                 ticketId: ticketId,
-                requestTs: requestTs
+                requestTs: requestTs,
+                searchRequestId: searchRequestId
             });
 
             // 2. 显示"正在搜索"状态
             showSearchResultInLog(ticketId, 'searching');
 
-            // 3. 在后台标签页打开飞书目标页面
-            //    需求：不要打扰用户在当前页面的操作
-            //    注意：飞书是重型 SPA，复用标签页时【不要 reload】，
-            //    飞书端脚本已持续轮询 GM_setValue，直接依赖轮询读取新任务即可。
-            //    只有标签页不存在时才打开新标签页（脚本会随页面注入并自动初始化）。
+            // 3. 优先复用已有目标页，只有心跳超时才尝试拉起目标页
             try {
-                let tabExists = false;
-                try {
-                    tabExists = !!(feishuSearchState.feishuTabRef && !feishuSearchState.feishuTabRef.closed);
-                } catch (e) {
-                    // 跨域访问 .closed 可能抛 SecurityError，视为标签页不可用
-                    tabExists = false;
-                }
-
-                if (tabExists) {
-                    // 飞书端脚本持续轮询，GM_setValue 已在步骤1写入，飞书端会自动检测到
-                    feishuLog('已有飞书标签页在后台运行，等待其轮询到新任务');
+                if (isFeishuTargetPageAlive()) {
+                    feishuLog(feishuSearchFmtReq(searchRequestId, '飞书目标页心跳有效，复用现有页'));
+                } else if (isFeishuTargetPageRecentlySeen()) {
+                    feishuLog(feishuSearchFmtReq(searchRequestId, '飞书目标页近期活跃，先不重复打开'));
+                } else if (hasFreshFeishuOpenLock()) {
+                    feishuLog(feishuSearchFmtReq(searchRequestId, '飞书目标页正在拉起，复用本次动作'));
                 } else {
-                    feishuSearchState.feishuTabRef = window.open(
-                        FEISHU_SEARCH_CONFIG.feishuTargetUrl,
-                        'feishu_ticket_search_tab'  // 指定名称，防止重复开多个标签
-                    );
-                    feishuLog('已打开飞书后台标签页，等待脚本初始化后执行搜索');
+                    setFeishuOpenLock({ ts: requestTs, ticketId, searchRequestId });
+                    openFeishuTargetPageInBackground(searchRequestId);
+                    feishuLog(feishuSearchFmtReq(searchRequestId, '已尝试在后台唤起飞书目标页'));
                 }
             } catch (e) {
-                feishuLogError('打开飞书标签页失败:', e.message);
+                clearFeishuOpenLock();
+                feishuLogError(feishuSearchFmtReq(searchRequestId, '打开飞书标签页失败: ' + e.message));
                 showSearchResultInLog(ticketId, 'error', '无法打开飞书页面：' + e.message);
                 return;
             }
 
             // 4. 开始轮询等待结果
-            startPollResult(ticketId, requestTs);
+            startPollResult(ticketId, requestTs, searchRequestId);
         }
 
         /**
@@ -4292,6 +4977,7 @@
         };
 
         function caLog(msg) {
+            if (!CLEAR_AVATAR_CONFIG.DEBUG) return;
             console.log('[模块F-AIHelp]', msg);
             caLogger.log(msg);
         }
@@ -4302,6 +4988,7 @@
         }
 
         function caLogSuccess(msg) {
+            if (!CLEAR_AVATAR_CONFIG.DEBUG) return;
             console.log('[模块F-AIHelp] ✓', msg);
             caLogger.success(msg);
         }
@@ -4496,7 +5183,8 @@
     // 功能：
     //   - 在主脚本状态栏图标新增"内"区域
     //   - 展开面板中添加"内部回复"快捷按钮
-    //   - 用户点击后，模拟点击工单界面的"内部回复"按钮
+    //   - 无内部回复对话框时：模拟点击工具栏「内部回复」
+    //   - 已有内部回复对话框时：模拟点击对话框底部「回复」
     // =========================================================================
     (function() {
         'use strict';
@@ -4526,19 +5214,76 @@
             replyLogger.warn(msg);
         }
 
+        function findInternalReplyDialogRoot() {
+            const headers = document.querySelectorAll('.cusHeader');
+            for (const h of headers) {
+                const t = (h.textContent || '').replace(/\s+/g, '').trim();
+                if (t !== '内部回复') continue;
+                if (h.offsetParent === null) continue;
+                const dlg = h.closest('.el-dialog');
+                if (dlg && dlg.offsetParent !== null) {
+                    return dlg;
+                }
+            }
+            return null;
+        }
+
+        function findDialogFooterReplyButton(dialog) {
+            if (!dialog) return null;
+            const footer = dialog.querySelector('.el-dialog__footer');
+            const scope = footer || dialog;
+            const buttons = scope.querySelectorAll('button');
+            for (const btn of buttons) {
+                const norm = (btn.textContent || '').replace(/\s+/g, '').trim();
+                if (norm === '回复') {
+                    return btn;
+                }
+            }
+            for (const btn of buttons) {
+                const norm = (btn.textContent || '').replace(/\s+/g, '').trim();
+                if (norm.includes('回复') && !norm.includes('内部回复')) {
+                    return btn;
+                }
+            }
+            return null;
+        }
+
         /**
-         * 模拟点击原生的"内部回复"按钮
+         * 无对话框时点击工具栏「内部回复」；已有「内部回复」对话框时点击底部「回复」
          */
         function doInternalReply(zoneElement) {
-            replyLog('准备点击"内部回复"...');
-
             if (UI) {
                 UI.showZoneProcessing('reply', true);
                 UI.setZoneText('reply', '...');
             }
 
             try {
-                // 查找包含"内部回复"或"内部备注"文本的 button 元素
+                const dialog = findInternalReplyDialogRoot();
+                if (dialog) {
+                    replyLog('检测到「内部回复」对话框已打开，准备点击「回复」...');
+                    const replyBtn = findDialogFooterReplyButton(dialog);
+                    if (!replyBtn) {
+                        replyLogWarn('对话框内未找到「回复」按钮');
+                        if (UI) {
+                            UI.showZoneProcessing('reply', false);
+                            UI.resetZoneText('reply');
+                        }
+                        return;
+                    }
+                    if (replyBtn.disabled) {
+                        replyLogWarn('「回复」按钮当前为禁用状态（需先填写工单回复等内容后才会生效）');
+                    }
+                    replyBtn.click();
+                    replyLog('已成功点击「回复」按钮');
+                    if (UI) {
+                        UI.showZoneSuccess('reply');
+                        UI.showZoneProcessing('reply', false);
+                        UI.resetZoneText('reply');
+                    }
+                    return;
+                }
+
+                replyLog('准备点击工具栏「内部回复」...');
                 const buttons = Array.from(document.querySelectorAll('button'));
                 const targetBtn = buttons.find(el => {
                     const text = (el.textContent || '').trim();
@@ -4570,7 +5315,7 @@
                     }
                 }
             } catch (e) {
-                replyLogError('点击内部回复按钮异常: ' + e.message);
+                replyLogError('内部回复快捷操作异常: ' + e.message);
                 if (UI) {
                     UI.showZoneProcessing('reply', false);
                     UI.resetZoneText('reply');
@@ -4609,6 +5354,421 @@
 
     })();
 
+    // =========================================================================
+    // 模块 H-AIHelp端：邮件一键发送（独立 IIFE，仅依赖 UI / SharedUtils）
+    // 流程：更多 → 发送奖励 → 选择奖励 → 保存 → 解决 → 解决原因（选原因）→ 聚焦「解决原因」弹窗内「内部回复」的 textarea
+    // 注意：最后一步的「内部回复」textarea 属于「解决原因」对话框，与工单工具栏「内部回复」按钮不是同一处
+    // =========================================================================
+    (function() {
+        'use strict';
+
+        if (!currentUrl.includes('ml-panel.aihelp.net')) return;
+
+        const mailLogger = UI ? UI.createLogChannel('mail') : {
+            log: (m) => console.log('[邮件]', m),
+            error: (m) => console.error('[邮件]', m),
+            warn: (m) => console.warn('[邮件]', m),
+            success: (m) => console.log('[邮件] ✓', m)
+        };
+
+        /** 键：选择奖励弹窗中输入/匹配用；值：「解决原因」下拉里搜索用的中文（键值对值） */
+        const MAIL_TYPE_MAP = {
+            '9 Design': '设计如此',
+            '10 Needinfo': '不予解决/无法复现',
+            '8 Noticed': '已知，会修',
+            '5 Fixed': '线上已解决',
+            '7 FixNex': '下版本修复'
+        };
+
+        /** 与「选择奖励」下拉列表项文案一致（用于点击唯一匹配项） */
+        const MAIL_REWARD_LINE_TEXT = {
+            '9 Design': '9 Design.mail',
+            '10 Needinfo': '10 Needinfo.mail',
+            '8 Noticed': '8 Noticed.mail（test server 10D)）',
+            '5 Fixed': '5 Fixed.mail',
+            '7 FixNex': '7 FixNextUpdate.mail（test server 10D)）'
+        };
+
+        function sleep(ms) {
+            return new Promise(r => setTimeout(r, ms));
+        }
+
+        function isVisibleElement(el) {
+            if (!el) return false;
+            try {
+                const style = window.getComputedStyle(el);
+                return style.display !== 'none' &&
+                    style.visibility !== 'hidden' &&
+                    style.opacity !== '0' &&
+                    el.offsetParent !== null;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function normalizeUiText(text) {
+            return (text || '').replace(/\s+/g, '').trim();
+        }
+
+        function findMoreButtonCandidates() {
+            const scopes = [document.querySelector('.new-top'), document.body].filter(Boolean);
+            const candidates = [];
+            const seen = new Set();
+
+            const pushCandidate = (el) => {
+                const clickable = el && (el.closest('button, [role="button"], .el-dropdown-selfdefine') || el);
+                if (!clickable || seen.has(clickable) || !isVisibleElement(clickable)) return;
+                seen.add(clickable);
+                candidates.push(clickable);
+            };
+
+            for (const scope of scopes) {
+                scope.querySelectorAll('button.el-button.more, button.el-dropdown-selfdefine, button.el-button').forEach(pushCandidate);
+                scope.querySelectorAll('span').forEach(span => {
+                    if (normalizeUiText(span.textContent) === '更多') {
+                        pushCandidate(span);
+                    }
+                });
+            }
+
+            return candidates.filter(candidate => normalizeUiText(candidate.textContent).includes('更多'));
+        }
+
+        function findVisibleDropdownMenuItem(targetText) {
+            const normalizedTarget = normalizeUiText(targetText);
+            const menus = Array.from(document.querySelectorAll('.el-dropdown-menu')).filter(isVisibleElement);
+            for (let i = menus.length - 1; i >= 0; i--) {
+                const menu = menus[i];
+                const items = Array.from(menu.querySelectorAll('li.el-dropdown-menu__item')).filter(isVisibleElement);
+                const target = items.find(item => normalizeUiText(item.textContent).includes(normalizedTarget));
+                if (target) {
+                    return target;
+                }
+            }
+            return null;
+        }
+
+        async function triggerUiClick(el, options = {}) {
+            if (!el) return;
+            const { hoverOnly = false } = options;
+            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            await sleep(120);
+            ['mouseenter', 'mouseover', 'mousemove'].forEach(eventType => {
+                el.dispatchEvent(new MouseEvent(eventType, {
+                    bubbles: true,
+                    cancelable: true
+                }));
+            });
+            if (typeof el.focus === 'function') {
+                el.focus();
+            }
+            if (hoverOnly) {
+                return;
+            }
+            ['mousedown', 'mouseup', 'click'].forEach(eventType => {
+                el.dispatchEvent(new MouseEvent(eventType, {
+                    bubbles: true,
+                    cancelable: true
+                }));
+            });
+            if (typeof el.click === 'function') {
+                el.click();
+            }
+        }
+
+        function showMailTypePicker(onSelect) {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'position:fixed;inset:0;z-index:10000000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;';
+            const box = document.createElement('div');
+            box.style.cssText = 'background:#fff;padding:16px 18px;border-radius:10px;max-width:400px;min-width:280px;box-shadow:0 8px 32px rgba(0,0,0,.2);';
+            const title = document.createElement('div');
+            title.textContent = '选择邮件类型';
+            title.style.cssText = 'font-weight:600;margin-bottom:12px;font-size:14px;color:#1d1d1f;';
+            box.appendChild(title);
+            Object.keys(MAIL_TYPE_MAP).forEach((k) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = k + ' → ' + MAIL_TYPE_MAP[k];
+                btn.style.cssText = 'display:block;width:100%;margin:6px 0;padding:8px 10px;text-align:left;cursor:pointer;border:1px solid #e8e8e8;border-radius:6px;background:#fafafa;font-size:12px;';
+                btn.onmouseover = () => { btn.style.background = '#eef3ff'; btn.style.borderColor = '#adc6ff'; };
+                btn.onmouseout = () => { btn.style.background = '#fafafa'; btn.style.borderColor = '#e8e8e8'; };
+                btn.onclick = () => {
+                    wrap.remove();
+                    onSelect(k);
+                };
+                box.appendChild(btn);
+            });
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.textContent = '取消';
+            cancel.style.cssText = 'margin-top:10px;padding:6px 14px;cursor:pointer;border-radius:6px;border:1px solid #d9d9d9;background:#fff;';
+            cancel.onclick = () => wrap.remove();
+            box.appendChild(cancel);
+            wrap.appendChild(box);
+            wrap.addEventListener('click', (e) => {
+                if (e.target === wrap) wrap.remove();
+            });
+            document.body.appendChild(wrap);
+        }
+
+        async function waitForDialogByHeader(headerText, timeout = 10000) {
+            const start = Date.now();
+            const compact = (headerText || '').replace(/\s+/g, '');
+            while (Date.now() - start < timeout) {
+                const headers = document.querySelectorAll('.cusHeader');
+                for (const h of headers) {
+                    const t = (h.textContent || '').replace(/\s+/g, '').trim();
+                    if (t === compact || t.includes(compact)) {
+                        const dlg = h.closest('.el-dialog');
+                        if (dlg) {
+                            try {
+                                if (dlg.offsetParent !== null && window.getComputedStyle(dlg).display !== 'none') {
+                                    return dlg;
+                                }
+                            } catch (e) {
+                                return dlg;
+                            }
+                        }
+                    }
+                }
+                await sleep(80);
+            }
+            return null;
+        }
+
+        async function clickMoreButton() {
+            const candidates = findMoreButtonCandidates();
+            if (candidates.length === 0) {
+                mailLogger.warn('\u672a\u627e\u5230\u300c\u66f4\u591a\u300d\u6309\u94ae');
+                return false;
+            }
+
+            for (const candidate of candidates) {
+                await triggerUiClick(candidate, { hoverOnly: true });
+                for (let i = 0; i < 8; i++) {
+                    if (findVisibleDropdownMenuItem('\u53d1\u9001\u5956\u52b1')) {
+                        return true;
+                    }
+                    await sleep(80);
+                }
+
+                await triggerUiClick(candidate);
+                for (let i = 0; i < 6; i++) {
+                    if (findVisibleDropdownMenuItem('\u53d1\u9001\u5956\u52b1')) {
+                        return true;
+                    }
+                    await sleep(80);
+                }
+            }
+
+            mailLogger.warn('\u70b9\u51fb\u6216\u60ac\u6d6e\u300c\u66f4\u591a\u300d\u540e\u672a\u51fa\u73b0\u53ef\u89c1\u83dc\u5355');
+            return false;
+        }
+
+        async function clickSendRewardMenuItem() {
+            let target = null;
+            for (let i = 0; i < 10; i++) {
+                target = findVisibleDropdownMenuItem('\u53d1\u9001\u5956\u52b1');
+                if (target) break;
+                await sleep(80);
+            }
+            if (!target) {
+                mailLogger.warn('\u672a\u627e\u5230\u300c\u53d1\u9001\u5956\u52b1\u300d\u83dc\u5355\u9879');
+                return false;
+            }
+
+            const clickTargets = [];
+            const contentNode = target.querySelector('div');
+            if (contentNode) clickTargets.push(contentNode);
+            clickTargets.push(target);
+
+            for (const clickTarget of clickTargets) {
+                await triggerUiClick(target, { hoverOnly: true });
+                if (clickTarget !== target) {
+                    await triggerUiClick(clickTarget, { hoverOnly: true });
+                }
+                await sleep(80);
+                await triggerUiClick(clickTarget);
+
+                const rewardDialog = await waitForDialogByHeader('\u9009\u62e9\u5956\u52b1', 2000);
+                if (rewardDialog) {
+                    return true;
+                }
+
+                await sleep(120);
+            }
+
+            mailLogger.warn('\u5df2\u89e6\u53d1\u300c\u53d1\u9001\u5956\u52b1\u300d\u83dc\u5355\u9879\uff0c\u4f46\u672a\u62c9\u8d77\u300c\u9009\u62e9\u5956\u52b1\u300d\u5bf9\u8bdd\u6846');
+            return false;
+        }
+
+        async function runSelectRewardDialog(mailKey) {
+            const dialog = await waitForDialogByHeader('选择奖励', 12000);
+            if (!dialog) {
+                mailLogger.error('未出现「选择奖励」对话框');
+                return false;
+            }
+
+            const input = dialog.querySelector('input[placeholder="选择奖励"]') ||
+                dialog.querySelector('.ai-dialog-content .el-select input.el-input__inner');
+            if (!input) {
+                mailLogger.error('选择奖励：未找到输入框');
+                return false;
+            }
+            input.click();
+            await sleep(200);
+            const typeKey = mailKey;
+            SharedUtils.simulateInputValue(input, typeKey);
+            await sleep(220);
+
+            const lineText = MAIL_REWARD_LINE_TEXT[mailKey];
+            if (!lineText) {
+                mailLogger.error('未配置该类型的奖励模板行: ' + mailKey);
+                return false;
+            }
+            let picked = await SharedUtils.selectDropdownOption(lineText, mailLogger, 2500, {});
+            if (!picked) {
+                picked = await SharedUtils.selectDropdownOption(typeKey, mailLogger, 2500, {});
+            }
+            if (!picked) {
+                mailLogger.warn('未点到「选择奖励」选项，请手动选择');
+                return false;
+            }
+
+            const saveBtn = dialog.querySelector('.el-dialog__footer button.el-button--primary');
+            if (!saveBtn) {
+                mailLogger.warn('未找到「保存」按钮');
+                return false;
+            }
+            for (let i = 0; i < 40; i++) {
+                if (!saveBtn.disabled && !saveBtn.classList.contains('is-disabled')) break;
+                await sleep(100);
+            }
+            if (saveBtn.disabled) {
+                mailLogger.warn('「保存」仍为禁用，请检查是否已选择奖励');
+                return false;
+            }
+            saveBtn.click();
+            await sleep(450);
+            return true;
+        }
+
+        async function clickSolveButton() {
+            const newTop = document.querySelector('.new-top');
+            if (!newTop) {
+                mailLogger.warn('未找到 .new-top 区域');
+                return false;
+            }
+            const btns = Array.from(newTop.querySelectorAll('button.el-button'));
+            const solve = btns.find(b => (b.textContent || '').replace(/\s+/g, '').trim() === '解决');
+            if (!solve) {
+                mailLogger.warn('未找到「解决」按钮');
+                return false;
+            }
+            solve.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            await sleep(120);
+            solve.click();
+            await sleep(400);
+            return true;
+        }
+
+        /**
+         * 在「解决原因」对话框中：先选「解决原因」下拉（输入 MAIL_TYPE_MAP 的值），
+         * 再聚焦「内部回复」表单项下的 textarea（此为「解决原因」弹窗内的内部回复，非工具栏「内部回复」）
+         */
+        async function runCloseReasonDialog(reasonSearchText) {
+            const dialog = await waitForDialogByHeader('解决原因', 12000);
+            if (!dialog) {
+                mailLogger.error('未出现「解决原因」对话框');
+                return false;
+            }
+
+            const reasonInput = dialog.querySelector('.el-form-item input[placeholder="请选择"]') ||
+                dialog.querySelector('input[placeholder="请选择"]');
+            if (reasonInput) {
+                reasonInput.click();
+                await sleep(200);
+                const filled = await SharedUtils.fillDropdownSearch(reasonSearchText, mailLogger, 150, { preferThirdLink: true });
+                if (!filled) {
+                    mailLogger.warn('「解决原因」下拉选择可能失败，请手动确认');
+                }
+            } else {
+                mailLogger.warn('未找到「解决原因」下拉输入框');
+            }
+
+            await sleep(200);
+            const labels = dialog.querySelectorAll('.el-form-item__label');
+            let internalReplyTextarea = null;
+            for (const lbl of labels) {
+                const lt = (lbl.textContent || '').trim();
+                if (lt.includes('内部回复')) {
+                    const fi = lbl.closest('.el-form-item');
+                    internalReplyTextarea = fi && fi.querySelector('textarea.el-textarea__inner');
+                    if (internalReplyTextarea) break;
+                }
+            }
+            if (internalReplyTextarea) {
+                internalReplyTextarea.focus();
+                internalReplyTextarea.click();
+                mailLogger.log('已聚焦「解决原因」弹窗内的「内部回复」文本框（请填写后自行提交对话框）');
+            } else {
+                mailLogger.warn('未找到「解决原因」弹窗内的「内部回复」文本框');
+            }
+            return true;
+        }
+
+        async function runMailFlow(mailKey) {
+            if (!MAIL_TYPE_MAP[mailKey]) {
+                mailLogger.warn('未知邮件类型: ' + mailKey);
+                return;
+            }
+            if (UI) {
+                UI.showZoneProcessing('mail', true);
+                UI.setZoneText('mail', '...');
+            }
+            try {
+                mailLogger.log('开始邮件流程，类型键: ' + mailKey);
+                if (!(await clickMoreButton())) throw new Error('更多');
+                if (!(await clickSendRewardMenuItem())) throw new Error('发送奖励');
+                if (!(await runSelectRewardDialog(mailKey))) throw new Error('选择奖励');
+                if (!(await clickSolveButton())) throw new Error('解决');
+                await runCloseReasonDialog(MAIL_TYPE_MAP[mailKey]);
+                mailLogger.success('邮件自动化步骤已完成（请补充「内部回复」并确认关闭对话框）');
+                if (UI) UI.showZoneSuccess('mail');
+            } catch (e) {
+                mailLogger.error('邮件流程中断: ' + (e && e.message ? e.message : e));
+            } finally {
+                if (UI) {
+                    UI.showZoneProcessing('mail', false);
+                    UI.resetZoneText('mail');
+                }
+            }
+        }
+
+        function startMailFromUi() {
+            showMailTypePicker((key) => {
+                runMailFlow(key).catch(() => {});
+            });
+        }
+
+        function initMailModule() {
+            if (!UI) {
+                mailLogger.error('UI 未初始化，模块 H 跳过');
+                return;
+            }
+            UI.registerZoneCallback('mail', () => startMailFromUi());
+            UI.addButton('发送邮件', 'btn-mail', () => startMailFromUi());
+            mailLogger.log('模块 H-AIHelp端（邮件一键发送）初始化完成');
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => setTimeout(initMailModule, 650));
+        } else {
+            setTimeout(initMailModule, 650);
+        }
+
+    })();
+
 })(); // ← 外层主 IIFE 结束
 
 // =========================================================================
@@ -4632,8 +5792,8 @@
 
         // 仅在飞书目标页面运行
         const currentUrl = window.location.href;
-        if (!currentUrl.includes('feishu.cn')) return;
-        if (!currentUrl.includes('Cot68m5vg')) return;
+        const FEISHU_TARGET_PAGE_REGEX = /^https:\/\/project\.feishu\.cn\/ml\/workObjectView\/onlineissue\/Cot68m5vg(?:\?.*)?$/;
+        if (!FEISHU_TARGET_PAGE_REGEX.test(currentUrl)) return;
 
         // ---- 配置区（与 AIHelp 端保持同步的存储键名）----
         const FEISHU_EXEC_CONFIG = {
@@ -4641,12 +5801,16 @@
             storageKeyPending: 'feishu_ticket_search_pending_v1',
             storageKeyResult: 'feishu_ticket_search_result_v1',
             storageKeyResultTs: 'feishu_ticket_search_result_ts_v1',
+            storageKeyHeartbeat: 'feishu_ticket_search_heartbeat_v1',
+            storageKeyOpenLock: 'feishu_ticket_search_open_lock_v1',
             // 飞书重型应用，初始化等待时间（来自 rules.md 动态页面处理规范）
             initDelay: 3000,
             // 搜索结果等待超时（毫秒）
-            searchResultTimeout: 10000,
+            searchResultTimeout: 15000,
             // 轮询待搜索 ID 的间隔（毫秒）：页面加载后持续检测新任务
-            pollPendingInterval: 1000
+            pollPendingInterval: 1000,
+            heartbeatInterval: 4000,
+            reloadDelayAfterResult: 1200
         };
 
         // ---- 状态区 ----
@@ -4654,7 +5818,8 @@
             isSearching: false,         // 防止并发搜索
             lastSearchedId: null,       // 上次搜索的 Ticket ID（防重复）
             lastRequestTs: 0,           // 上次请求的时间戳
-            isInitialized: false        // 是否已完成初始化
+            isInitialized: false,       // 是否已完成初始化
+            reloadTimer: null
         };
 
         function feishuExecLog(...args) {
@@ -4665,6 +5830,50 @@
 
         function feishuExecLogError(...args) {
             console.error('[飞书搜索执行器 错误]', ...args);
+        }
+
+        function feishuExecRp(searchRequestId) {
+            return typeof searchRequestId === 'string' && searchRequestId ? ('[' + searchRequestId + '] ') : '';
+        }
+
+        function writeHeartbeat() {
+            try {
+                GM_setValue(FEISHU_EXEC_CONFIG.storageKeyHeartbeat, Date.now());
+            } catch (e) {
+                feishuExecLogError('写入目标页心跳失败:', e.message);
+            }
+        }
+
+        function startHeartbeat() {
+            writeHeartbeat();
+            setInterval(writeHeartbeat, FEISHU_EXEC_CONFIG.heartbeatInterval);
+        }
+
+        function clearOpenLock() {
+            try {
+                GM_deleteValue(FEISHU_EXEC_CONFIG.storageKeyOpenLock);
+            } catch (e) {
+                feishuExecLogError('清理目标页打开锁失败:', e.message);
+            }
+        }
+
+        function clearPendingSearchRequest() {
+            try {
+                GM_deleteValue(FEISHU_EXEC_CONFIG.storageKeyPending);
+            } catch (e) {
+                feishuExecLogError('清理待搜索任务失败:', e.message);
+            }
+        }
+
+        function refreshTargetPageAfterResult() {
+            if (feishuExecState.reloadTimer) {
+                clearTimeout(feishuExecState.reloadTimer);
+            }
+
+            feishuExecState.reloadTimer = setTimeout(() => {
+                feishuExecLog('搜索结果已返回，刷新目标页以便下次搜索');
+                window.location.reload();
+            }, FEISHU_EXEC_CONFIG.reloadDelayAfterResult);
         }
 
         /**
@@ -4880,21 +6089,27 @@
          * 执行一次 Ticket ID 搜索的完整流程
          * @param {string} ticketId - 要搜索的 Ticket ID
          * @param {number} requestTs - 本次请求的时间戳（用于结果标记）
+         * @param {string} [searchRequestId] - 与 AIHelp 端日志对齐的请求 ID
          */
-        async function executeFeishuSearch(ticketId, requestTs) {
+        async function executeFeishuSearch(ticketId, requestTs, searchRequestId) {
             if (feishuExecState.isSearching) {
                 feishuExecLog('正在搜索中，跳过重复请求');
                 return;
             }
 
+            const rp = feishuExecRp(searchRequestId);
+
             feishuExecState.isSearching = true;
-            feishuExecLog('========== 开始飞书搜索 ==========');
-            feishuExecLog('Ticket ID:', ticketId, '| 请求时间:', new Date(requestTs).toLocaleTimeString());
+            feishuExecState.lastRequestTs = requestTs;
+            feishuExecState.lastSearchedId = ticketId;
+            feishuExecLog(rp + '========== 开始飞书搜索 ==========');
+            feishuExecLog(rp + 'Ticket ID: ' + ticketId + ' | 请求时间: ' + new Date(requestTs).toLocaleTimeString());
 
             try {
                 // 1. 检查登录状态
                 if (!isFeishuLoggedIn()) {
-                    feishuExecLog('飞书未登录，返回 not_logged_in 状态');
+                    feishuExecLog(rp + '飞书未登录，返回 not_logged_in 状态');
+                    clearOpenLock();
                     writeSearchResult('not_logged_in');
                     return;
                 }
@@ -4902,7 +6117,7 @@
                 // 2. 先点击"查找"图标按钮，展开搜索输入框
                 //    飞书搜索框默认折叠，必须先点击查找图标才会显示 input
                 //    查找图标特征：按钮内包含"查找"文字的 span
-                feishuExecLog('等待查找图标按钮出现...');
+                feishuExecLog(rp + '等待查找图标按钮出现...');
 
                 // 等待查找按钮所在的容器加载完成
                 await waitForElement(
@@ -4935,7 +6150,8 @@
 
                 const queryBtn = findSearchButton();
                 if (!queryBtn) {
-                    feishuExecLogError('未找到查找图标按钮，页面可能未加载完成或结构已变化');
+                    feishuExecLogError(rp + '未找到查找图标按钮，页面可能未加载完成或结构已变化');
+                    clearOpenLock();
                     if (!isFeishuLoggedIn()) {
                         writeSearchResult('not_logged_in');
                     } else {
@@ -4944,26 +6160,28 @@
                     return;
                 }
 
-                feishuExecLog('找到查找按钮，模拟点击展开搜索框...');
+                feishuExecLog(rp + '找到查找按钮，模拟点击展开搜索框...');
                 queryBtn.click();
 
                 // 3. 等待搜索输入框展开（点击后动画/渲染需要短暂时间）
-                feishuExecLog('等待搜索输入框出现...');
+                feishuExecLog(rp + '等待搜索输入框出现...');
                 const searchInput = await waitForElement(
                     'input[placeholder="按标题查找"], input.semi-input[placeholder*="查找"], #story-view-search-container input',
                     5000
                 );
 
                 if (!searchInput) {
-                    feishuExecLogError('点击查找按钮后搜索输入框仍未出现');
+                    feishuExecLogError(rp + '点击查找按钮后搜索输入框仍未出现');
+                    clearOpenLock();
                     writeSearchResult('error', '搜索输入框未展开，请检查飞书页面');
                     return;
                 }
 
                 // 4. 向搜索框输入 Ticket ID
-                feishuExecLog('搜索输入框已展开，开始输入 Ticket ID:', ticketId);
+                feishuExecLog(rp + '搜索输入框已展开，开始输入 Ticket ID: ' + ticketId);
                 const inputResult = simulateSearchInput(searchInput, ticketId);
                 if (!inputResult) {
+                    clearOpenLock();
                     writeSearchResult('error', '无法向搜索框输入内容');
                     return;
                 }
@@ -4971,7 +6189,7 @@
                 // 4. 等待 Enter 的 debounce，再点击"过滤"复选框
                 //    飞书搜索框输入后需要点击"过滤"复选框才能真正按标题过滤
                 //    结构：<span class="semi-checkbox-inner-display"></span>（在 meego-checkbox 内）
-                feishuExecLog('等待过滤复选框出现...');
+                feishuExecLog(rp + '等待过滤复选框出现...');
                 await new Promise(resolve => setTimeout(resolve, 600));
 
                 async function clickFilterCheckbox() {
@@ -4982,7 +6200,7 @@
                         if (label && label.innerText && label.innerText.trim() === '过滤') {
                             const input = cb.querySelector('input[type="checkbox"]');
                             if (input && input.getAttribute('aria-checked') !== 'true') {
-                                feishuExecLog('找到"过滤"复选框，模拟点击...');
+                                feishuExecLog(rp + '找到"过滤"复选框，模拟点击...');
                                 // 点击 inner-display（视觉元素）
                                 const display = cb.querySelector('.semi-checkbox-inner-display');
                                 if (display) { display.click(); return true; }
@@ -4990,7 +6208,7 @@
                                 input.click();
                                 return true;
                             } else if (input && input.getAttribute('aria-checked') === 'true') {
-                                feishuExecLog('"过滤"复选框已勾选，无需重复点击');
+                                feishuExecLog(rp + '"过滤"复选框已勾选，无需重复点击');
                                 return true;
                             }
                         }
@@ -5002,33 +6220,39 @@
                         if (parent) {
                             const text = parent.innerText || '';
                             if (text.includes('过滤')) {
-                                feishuExecLog('备用：找到"过滤"复选框显示元素，模拟点击...');
+                                feishuExecLog(rp + '备用：找到"过滤"复选框显示元素，模拟点击...');
                                 d.click();
                                 return true;
                             }
                         }
                     }
-                    feishuExecLog('未找到"过滤"复选框，跳过（继续等待结果）');
+                    feishuExecLog(rp + '未找到"过滤"复选框，跳过（继续等待结果）');
                     return false;
                 }
 
                 const filterClicked = await clickFilterCheckbox();
-                feishuExecLog('过滤复选框点击结果:', filterClicked);
+                feishuExecLog(rp + '过滤复选框点击结果: ' + filterClicked);
 
                 // 5. 等待过滤后搜索结果更新
-                feishuExecLog('等待搜索结果...');
+                feishuExecLog(rp + '等待搜索结果...');
                 await new Promise(resolve => setTimeout(resolve, 1500));
 
                 // 6. 检测结果
                 const result = await detectSearchResult();
-                feishuExecLog('搜索结果:', result);
+                feishuExecLog(rp + '搜索结果: ' + result);
 
                 // 7. 写入结果
+                clearOpenLock();
                 writeSearchResult(result);
-                feishuExecLog('========== 飞书搜索完成 ==========');
+                clearPendingSearchRequest();
+                if (result === 'found' || result === 'notfound') {
+                    refreshTargetPageAfterResult();
+                }
+                feishuExecLog(rp + '========== 飞书搜索完成 ==========');
 
             } catch (e) {
-                feishuExecLogError('飞书搜索执行异常:', e.message);
+                feishuExecLogError(feishuExecRp(searchRequestId) + '飞书搜索执行异常: ' + e.message);
+                clearOpenLock();
                 writeSearchResult('error', e.message);
             } finally {
                 feishuExecState.isSearching = false;
@@ -5044,20 +6268,18 @@
 
             setInterval(() => {
                 try {
+                    if (feishuExecState.isSearching) return;
+
                     const pending = GM_getValue(FEISHU_EXEC_CONFIG.storageKeyPending, null);
                     if (!pending || !pending.ticketId) return;
 
-                    const { ticketId, requestTs } = pending;
+                    const { ticketId, requestTs, searchRequestId } = pending;
 
                     // 跳过已处理过的请求（通过时间戳区分）
                     if (requestTs <= feishuExecState.lastRequestTs) return;
 
-                    feishuExecLog('检测到新的搜索请求:', ticketId, '时间戳:', requestTs);
-                    feishuExecState.lastRequestTs = requestTs;
-                    feishuExecState.lastSearchedId = ticketId;
-
-                    // 异步执行搜索
-                    executeFeishuSearch(ticketId, requestTs);
+                    feishuExecLog(feishuExecRp(searchRequestId) + '检测到新的搜索请求: ' + ticketId + ' | reqTs: ' + requestTs);
+                    executeFeishuSearch(ticketId, requestTs, searchRequestId);
                 } catch (e) {
                     feishuExecLogError('轮询异常:', e.message);
                 }
@@ -5071,6 +6293,8 @@
             feishuExecLog('========================================');
 
             feishuExecState.isInitialized = true;
+            clearOpenLock();
+            startHeartbeat();
 
             // 页面加载后等待飞书 SPA 初始化完成（重型应用规范：3000ms）
             // 再开始轮询，避免搜索框还没渲染就执行
@@ -5081,11 +6305,9 @@
                 // 检查是否有立即需要处理的任务（页面刚打开时）
                 try {
                     const pending = GM_getValue(FEISHU_EXEC_CONFIG.storageKeyPending, null);
-                    if (pending && pending.ticketId && pending.requestTs > feishuExecState.lastRequestTs) {
-                        feishuExecLog('发现页面打开时已有待搜索任务:', pending.ticketId);
-                        feishuExecState.lastRequestTs = pending.requestTs;
-                        feishuExecState.lastSearchedId = pending.ticketId;
-                        executeFeishuSearch(pending.ticketId, pending.requestTs);
+                    if (!feishuExecState.isSearching && pending && pending.ticketId && pending.requestTs > feishuExecState.lastRequestTs) {
+                        feishuExecLog(feishuExecRp(pending.searchRequestId) + '发现页面打开时已有待搜索任务: ' + pending.ticketId);
+                        executeFeishuSearch(pending.ticketId, pending.requestTs, pending.searchRequestId);
                     }
                 } catch (e) {
                     feishuExecLogError('初始任务检查异常:', e.message);
