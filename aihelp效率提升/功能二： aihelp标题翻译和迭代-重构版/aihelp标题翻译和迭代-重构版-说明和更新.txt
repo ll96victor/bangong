@@ -1,0 +1,64 @@
+2026年1月24日
+原版加的功能太多，且部分逻辑并不合理，导致并没有提高效率。故而重构，添加跟多的提示，和更合理的逻辑。
+此外，下次迭代前，需要多多测试再加功能，很多问题是在测试前发现的。
+
+2026年1月24日，第一次修改，仅实现更改标题为对应版本的功能
+
+
+时效检测留着最后，需调整
+检测的时间为180秒，如果用户在点击"关联第三方"字段对应的图标后，超过180s
+
+2026年1月24日
+2.6版本修复列表页不生效问题，支持无工单ID场景。现在脚本在 工单列表页（/manual/tasks）和 详情页（/newpage-task）都会生效
+1. 核心问题：监听器设置逻辑
+原v2.5问题代码：
+JavaScript
+复制
+if (newOrderId !== currentOrderId) {
+    cleanup(); // 清理了监听器
+    currentOrderId = newOrderId;
+    
+    if (newOrderId) {  // 列表页为null，不执行！
+        document.body.addEventListener('click', handleClick, true);
+    }
+}
+修复后：
+JavaScript
+复制
+// 分离状态清理和监听器设置
+if (newOrderId !== currentOrderId) {
+    cleanupProcessingState(); // 只清理状态，保留监听器
+    currentOrderId = newOrderId;
+}
+
+// 独立设置监听器，不依赖工单ID
+if (!clickEventListener) {
+    document.body.addEventListener('click', handleClick, true);
+    clickEventListener = handleClick;
+}
+2. 新增列表页ServerID获取
+JavaScript
+复制
+// 尝试从当前激活行获取工单ID（列表页hover或选中行）
+const activeRow = document.querySelector('.el-table__row.current-row, .el-table__row:hover');
+if (activeRow) {
+    const orderCell = activeRow.querySelector('td:nth-child(2), td:nth-child(3)');
+    // ...提取逻辑
+}
+3. 增强的图标检测
+增加了对 className 包含 third-party 或 关联 的检测
+增加了 link 文本检测（国际化场景）
+4. 保活机制
+JavaScript
+复制
+// 定期检査监听器是否被SPA框架移除
+setInterval(() => {
+    if (shouldScriptRun() && !clickEventListener) {
+        log('监听器丢失，重新设置');
+        initializeScript();
+    }
+}, 5000);
+
+2026年1月24日
+2.7版本 修复部分链接不生效的问题
+

@@ -1,0 +1,173 @@
+2026年1月24日，第一次修改，仅实现更改标题为对应版本的功能
+提示词
+假设你是一名出色的油猴脚本专家ll96victor，你现在需要针对某个网页及其衍生开发一款油猴脚本，示例网页在压缩包中。该示例网页其实是工单列表中的一个工单界面。真正运行时，用户会在工单列表中点击多个不同的工单界面。
+这是一个企业级工单系统，DOM结构可能包含动态生成的class（如el-xxx-随机数），请优先使用属性选择器（[data-v-xxx]）或文本内容定位，避免依赖可能变化的class名。
+（注意：你面对的是一个单页应用（SPA），URL不改变，但内容动态加载。因此，我们需要在每次内容变化时重新扫描。建议通过检测特定元素，如工单ID的内容变化来判断是否切换了工单，工单ID界面最上方，类似20260123000927一串数字）
+
+
+请按以下结构组织生成的脚本代码：
+
+头部注释（@match、@exclude、@grant）（@run-at document-idle 或 document-end，确保DOM已加载完成但避免过早执行导致监听不到动态内容。）。
+
+用户配置区（放置 fullServer 等变量）。
+
+主函数与工具函数（每个函数功能单一）。
+
+MutationObserver 初始化逻辑。
+
+详细的 console.log 调试输出，方便我排查问题，比如，当前检测到的URL，是否匹配生效条件，检测到的ServerID值，最终替换前后的文本对比。
+
+
+默认配置设置：
+由于后面会多次调用两个名为"fullserver"和"testserver"的变量，我们先给这俩变量赋值。在给这俩变量赋值前，我们先给定两个参考的列表fullserverlists和testserverlists，用户可能会随机从列表中给变量赋值。用户可能隔一段时间会更改赋值。此处给定列表，是因为后续会从"fullserver"和"testserver"的变量的值中提取数字，为了正则表达式提取准确的数字，先给定可能值的范围。
+fullserverlists = ["【2.1.40全服】：", "【2.1.18全服】：", "【40.2全服】：", "【18.2全服】："]
+testserverlists = ["【40.2测服】：", "【2.1.52测服】：", "【1.9.88测服】：", "【2.1.50测服】："]
+
+暂时赋值如下，用户后续一段时间会手动修复赋值：
+fullserver = "【2.1.40全服】："
+testserver = "【40.2测服】："
+
+
+触发器：
+MutationObserver监听逻辑：监听工单ID元素（位于页面顶部，格式如20260123000927）的文本变化。
+当检测到工单ID变化时，重置所有状态（包括点击事件监听器），重新执行第一步到第九步的完整流程。
+如果工单ID元素消失（用户返回列表），则清理所有监听器，停止脚本。
+定位工单ID元素的方法（按优先级）：
+1. 查找包含纯数字且长度为14位（或12-16位）的文本节点
+2. 或通过 XPath：//text()[matches(., '^\d{14}$')]/parent::*
+3. 或通过观察发现特定属性（如data-order-id、class包含"order"等）
+如果找不到唯一标识，可退而监听URL的hash变化（hashchange事件）作为辅助判断。
+
+
+
+第一步：判断生效的网址，对判断条件1风格的网址都得生效，但对判断条件2风格的网址不生效。先检查排除条件（条件2），如果匹配则直接return；再检查生效条件（条件1）。
+
+生效条件：URL 包含 '/newpage-task' 或 '/manual/tasks'，且不包含 '/newpage-ticket'
+使用：if (url.includes('newpage-ticket')) return; // 先排除
+     if (url.includes('newpage-task') || url.includes('manual/tasks')) { // 再包含
+
+判断条件2，不生效的网址参考：
+https://ml-panel.aihelp.net/dashboard/#/newpage-ticket/?queryType=11&tId=Y87X27
+https://ml.aihelp.net/dashboard/#/newpage-ticket/?queryType=11&tId=Y8WJ9X
+https://aihelp.net.cn/dashboard/#/newpage-ticket/?queryType=11&tId=Y8WJ9X
+https://aihelp.net/dashboard/#/newpage-ticket/?queryType=11&tId=Y8WJ9X
+
+判断条件1，生效网址参考，遇到下列风格的代码才生效：
+https://ml-panel.aihelp.net/dashboard/#/newpage-task?orderId=10327063&orderCode=20260123000942&searchType=1
+https://ml-panel.aihelp.net/dashboard/#/manual/tasks?searchType=7&SmartViewID=25285&SmartViewType=4
+https://ml.aihelp.net/dashboard/#/newpage-task?orderId=10327063&orderCode=20260123000942&searchType=1
+https://ml.aihelp.net/dashboard/#/manual/tasks?searchType=7&SmartViewID=25285&SmartViewType=4
+https://aihelp.net.cn/dashboard/#/newpage-task?orderId=10327063&orderCode=20260123000942&searchType=1
+https://aihelp.net.cn/dashboard/#/manual/tasks?searchType=7&SmartViewID=25285&SmartViewType=4
+https://aihelp.net/dashboard/#/newpage-task?orderId=10327063&orderCode=20260123000942&searchType=1
+https://aihelp.net/dashboard/#/manual/tasks?searchType=7&SmartViewID=25285&SmartViewType=4
+
+第二步：
+检测用户在网页的点击，仅当用户点击"关联第三方"字段对应的图标时，才运行脚本之后的功能，否则不运行。
+"关联第三方"字段对应的图标在上传的名为"Dashboard-未点击关联第三方"的实例HTML网页的最右侧从上往下第五个图标（蓝色的“堆叠方块” 图标，）。
+1. 优先通过 aria-label 或 title 属性包含"关联第三方"查找
+2. 其次通过点击事件对象的 event.target 向上查找父元素，确认是否包含"关联第三方"文本
+3. 最后才考虑通过位置索引（并添加容错：如果第五个不存在，尝试查找堆叠方块图标特征）
+
+使用事件委托（Event Delegation）绑定到document.body，避免重复绑定。
+或者确保每次重新扫描时先移除旧的监听器。
+
+第三步：
+当第二步的条件生效，也就是用户点击"关联第三方"字段对应的图标时，执行第三步。等到"关联第三方"模块内的"任务标题 *"文本框已成功渲染在DOM中后（使用轮询检查（如每200ms检查一次），最多等待5秒。如果超时，输出console.error并停止执行。），判断"关联第三方"模块中名为"任务标题 *"下方的文本框是否可被用户编辑添加或删除文本。若"任务标题 *"下方的文本框处于不可编辑的状态，则不做任何操作。若"任务标题 *"下方的文本框处于可编辑的状态，则执行第四步。
+
+第三步的补充一：
+增加全局状态变量 isProcessing，当脚本开始执行（第三步）时设为 true，执行完成或出错时设为 false。
+如果 isProcessing 为 true 时再次触发，则跳过执行并输出 console.log('脚本正在执行中，跳过重复触发')。
+
+第三步的补充二：
+定位"任务标题 *"文本框的方法：
+1. 通过 XPath 或 querySelector 查找包含文本"任务标题"的 label 元素
+2. 通过 label 的 for 属性找到对应的 input 元素，或者查找 label 相邻的 input 元素
+3. 确认 input 的 type 为 text 或 textarea
+
+第三步补充三：
+判断文本框可编辑的标准：
+- input 元素没有 disabled 属性
+- input 元素没有 readonly 属性  
+- input 元素的 contentEditable 不为 false（如果是 div 模拟的输入框）
+- 通过 window.getComputedStyle(element) 检查 pointer-events 不为 none
+
+第三步补充四：
+使用 TreeWalker API 精确查找文本节点，避免了匹配到整个HTML文档的问题
+
+第四步：
+不再在"关联第三方"模块查找，而是找到当前网页的"内部描述"模块，判断"内部描述"模块下方的文本是否有"ServerID = "的字符串。
+若有"ServerID = "，则进行第六步操作。
+若无字符串"ServerID = "，则进行第五步操作。
+
+第四步补充：
+定位"内部描述"和"描述"模块的方法：
+通过 XPath 或 querySelector 查找包含文本"内部描述"或"描述"的标题元素（如h3、h4、div、span），
+然后获取其相邻的兄弟元素或父元素的下一个子元素作为内容区域。
+例如：//div[contains(text(),'内部描述')]/following-sibling::div[1]
+
+第五步：
+不再在"内部描述"模块查找，而是找到当前网页的"描述"模块，，判断"描述"模块下方的文本是否有"ServerID = "的字符串。
+若有"ServerID = "，则进行第六步操作。
+若无字符串"ServerID = "，则停止运行脚本。
+
+第六步：
+若"ServerID = "的数量大于1，则不做任何操作，停止运行脚本。
+若"ServerID = "的数量等于1，则执行第七步操作。
+
+第七步：
+根据字符串"ServerID = "后面紧跟的值来赋值一个变量leftheading。
+"ServerID = "后紧跟的通常是4位或者5位或者6位数字（/ServerID\s*=\s*(\d{4,6})\b/），如果"ServerID = "后紧跟的不是4位或者5位或者6位数字，则不做任何判断和操作，停止运行脚本。
+如果"ServerID = "后面紧跟的值为空、字符串"0"或数字0，则不做任何判断和操作，停止运行脚本。
+如果"ServerID = "后面紧跟的值开头两个数字是57，不管57后面的数字是什么，把testserver的值赋值给leftheading；反之，则把fullserver的值赋值给leftheading。
+
+第八步：
+判断"关联第三方"模块中名为"任务标题 *"下方的文本框中的文本是否有中文冒号或者英文冒号。冒号判断只考虑第一个冒号，如果文本从左到右有第二个冒号，则忽略除第一个冒号以外的所有冒号。
+若任务标题 *"下方的文本框中没有冒号，则不做任何判断和操作，停止运行脚本。
+若"任务标题 *"下方的文本框的有中文冒号或者英文冒号，则执行第九步。
+
+第九步：
+判断第一个冒号之前的文本是否包含MCGG或mcgg（/mcgg/i（不区分大小写））。
+如果第一个冒号之前的文本包含MCGG或mcgg（/mcgg/i（不区分大小写）），则不做任何判断和操作，停止运行脚本。
+如果第一个冒号之前的文本不包含MCGG或mcgg（/mcgg/i（不区分大小写）），将第一个冒号和第一个冒号前面的所有文本一次性替换为变量leftheading所对应的值。替换完成后，停止运行脚本。
+
+第九步补充：
+替换文本的操作：
+1. 先读取 input.value 保存到临时变量
+2. 构造新值：构造新值：leftheading + 原值.substring(原值.search(/[:：]/) + 1)
+3. 一次性赋值：input.value = 新值
+4. 触发 input 事件（dispatchEvent(new Event('input', { bubbles: true }))）以通知框架数据已变化
+
+
+
+特殊情况
+1.如果"关联第三方"模块关闭后，则停止运行脚本功能，除非工单ID变化，或者用户再次点击进入"关联第三方"模块。
+检测"关联第三方"模块关闭的方法：
+使用 MutationObserver 监听该模块的容器元素，如果元素被移除（removedNodes）或添加了隐藏类名（如 display:none），则视为关闭。
+关闭时重置 isProcessing 状态，并停止后续的轮询检查。
+
+2. 防抖机制（Debounce）：
+由于SPA环境下工单切换可能频繁触发，且用户可能快速双击图标，需在以下两处应用防抖：
+
+   - 触发器回调防抖（300ms）：
+     在MutationObserver监听工单ID变化的回调中，使用300ms防抖。
+     当用户快速切换多个工单时，只会在停止切换300ms后执行一次完整流程，避免中间状态干扰。
+   
+   - 点击事件防抖（500ms）：
+     在"关联第三方"图标点击事件处理中，使用500ms防抖。
+     防止用户快速双击或误触导致脚本重复执行，确保单次点击只触发一次流程。
+
+   注意：用于检测"关联第三方"模块关闭的MutationObserver不需要防抖，需实时响应。
+
+
+特别提醒AI的话：
+1.重要提示：
+- 所有 DOM 查询必须使用 try-catch 包裹，防止元素不存在时抛出错误中断脚本
+- 在 SPA 中，元素可能被 Vue/React 重新渲染，导致之前获取的引用失效，每次操作前最好重新查询 DOM
+- 如果使用了 setInterval 轮询，必须在流程结束、出错或模块关闭时 clearInterval，避免内存泄漏
+
+2.代码风格要求：
+- 使用 const 和 let，避免使用 var
+- 所有字符串比较使用 includes() 或 test()，避免使用 indexOf() > -1 这种易错写法
+- 在函数开头添加 'use strict'; 
+- 如果某个DOM元素未找到，立即 console.error('详细描述：哪个元素未找到') 并 return，不要继续执行
