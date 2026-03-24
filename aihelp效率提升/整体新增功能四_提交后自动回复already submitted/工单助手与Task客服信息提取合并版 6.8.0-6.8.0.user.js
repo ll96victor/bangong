@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         工单助手与Task客服信息提取合并版 6.8.11
+// @name         工单助手与Task客服信息提取合并版 6.8.20
 // @namespace    http://tampermonkey.net/
-// @version      6.8.11
+// @version      6.8.20
 // @description  优化工单识别性能，并增强标题翻译、飞书搜索稳定性与复制链路
 // @author       ll96victor
 // @match        https://ml-panel.aihelp.net/*
@@ -31,6 +31,68 @@
 // ==/UserScript==
 
 /**
+ * v6.8.20 (2026-03-24) 模块A/MCGG：切单后先清理旧关联第三方下拉弹层，避免旧搜索词串到新工单
+ *
+ * 【变更摘要】
+ *   - SharedUtils：新增关联第三方下拉弹层清理逻辑，打开新字段前先关闭并清空旧弹层搜索框
+ *   - 模块 A / MCGG：工单切换重置时同步清理旧的关联第三方下拉，减少上一单搜索词残留
+ *   - 模块 A / MCGG：发现迭代再次打开下拉前会优先清场，避免把上一单的 `2.1.60` / `2.1.66` / `模式独立包` 串到当前单
+ *
+ * v6.8.19 (2026-03-24) 模块A/MCGG：收紧发现迭代唯一候选误点，工单切换后终止旧自动填充链路
+ *
+ * 【变更摘要】
+ *   - 模块 A / MCGG：发现迭代不再使用“唯一候选”兜底，避免候选尚未刷新时误点旧值
+ *   - 模块 A / MCGG：关联第三方自动填充增加工单上下文校验，工单切换后终止旧链路，避免旧工单残留动作串到新工单
+ *   - 模块 A / MCGG：标题处理在工单切换后不再继续回填，降低旧异步流程干扰新工单的概率
+ *
+ * v6.8.18 (2026-03-24) 模块A/MCGG：修复发现迭代旧值残留
+ *
+ * 【变更摘要】
+ *   - 模块 A / MCGG：发现迭代改回稳妥链路，使用正常候选等待并补最终字段值确认
+ *   - 模块 A / MCGG：兼容 `2.1.66(非C#)` 这类扩展文本，避免页面继续残留旧值 `2.1.60`
+ *   - 模块 A / MCGG：失败日志补充当前字段值，便于区分“候选未刷新”和“页面仍保留旧值”
+ *
+ * v6.8.17 (2026-03-24) 模块A/MCGG：发现迭代回退到 6.8.15 确认逻辑
+ *
+ * 【变更摘要】
+ *   - 模块 A / MCGG：发现迭代自动填充成功判定回退到 6.8.15 风格，只按 legacy 选择结果记成功
+ *   - 移除 6.8.16 新增的发现迭代专用确认链路，避免再次出现重试和误报失败
+ *
+ * v6.8.16 (2026-03-24) 模块A/MCGG：发现迭代误报修正，MCGG 翻译链路对齐模块 A
+ *
+ * 【变更摘要】
+ *   - 模块 A / MCGG：发现迭代在旧下拉链路成功触发后，改为兼容扩展文本确认，修正“实际成功但日志失败”
+ *   - 模块 B / MCGG：标题翻译、多源面板、中文保留面板与可编辑替换逻辑对齐模块 A
+ *
+ * v6.8.15 (2026-03-24) 模块A/MCGG：发现迭代回退到 6.8.11 风格逻辑
+ *
+ * 【变更摘要】
+ *   - 模块 A / MCGG：发现迭代改回 6.8.11 风格，恢复“实际填充优先，允许日志不准”的旧行为
+ *   - 发现迭代专用下拉链路恢复为 1200ms 搜索等待 + 精确/模糊匹配，不再使用唯一候选、二次等待和最终字段值兜底
+ *   - 普通工单与 MCGG 的发现迭代焦点触发/自动处理，均恢复为只按旧链路返回值判定成功
+ *
+ * v6.8.14 (2026-03-23) 模块A/MCGG：发现迭代改为最终字段值优先判定，避免“实际成功但日志失败”
+ *
+ * 【变更摘要】
+ *   - 模块 A / MCGG：发现迭代在下拉搜索返回失败后，继续按字段最终值做确认；只要值已生效，就按成功处理
+ *   - 模块 A / MCGG：发现迭代确认等待时间放宽到 2.6 秒，降低异步回填稍慢导致的误判
+ *   - 模块 MCGG：发现迭代成功判定从严格全等改为兼容扩展文本，避免已选中 `1.2.60(非C#)` 仍判失败
+ *
+ * v6.8.13 (2026-03-23) 模块A：唯一候选兜底点击、翻译面板增量展示、无ServerID继续翻译
+ *
+ * 【变更摘要】
+ *   - 模块 A：下拉搜索在精确/模糊匹配之外新增“唯一候选”点击兜底，并增加二次等待，优先保证发现迭代自动填充成功
+ *   - 模块 A：多源翻译面板改为先展示已返回结果，再增量补齐后续结果，不再等待全部翻译源结束
+ *   - 模块 A：未识别到 ServerID 时，仅跳过发现迭代/渠道自动处理，标题翻译与多源面板继续执行
+ *   - 模块 A：普通工单模块内所有 MCGG 排除判断统一收紧为只识别 `【MCGG】`
+ *
+ * v6.8.12 (2026-03-23) 模块A：多源面板提速、发现迭代成功判定放宽、腾讯翻译配置简化
+ *
+ * 【变更摘要】
+ *   - 模块 A：多源面板改为渠道稳定后 100ms 展示，渠道阶段超过 2 秒直接强制展示
+ *   - 模块 A：普通工单「发现迭代」成功判定放宽，兼容 `2.1.60` 命中 `2.1.60(非C#)`，并收敛重复失败日志
+ *   - 模块 A：腾讯翻译仅保留 SecretId / SecretKey 菜单配置，Region 默认 `ap-beijing`，ProjectId 默认 `0`
+ *
  * v6.8.10 (2026-03-22) Fix mail reward click confirmation chain and add fallback recovery for normal-ticket iteration/channel autofill
  *
  * v6.8.9 (2026-03-22) 优化了飞书页的逻辑，MCGG工单的“功能模块”自动处理，发送邮件未识别的问题
@@ -1398,6 +1460,8 @@
     };
 
     const SharedUtils = {
+        activePickerDropdown: null,
+
         isInputAvailable(el) {
             if (!el) return false;
             try {
@@ -1586,22 +1650,87 @@
             return preferred || visible[visible.length - 1];
         },
 
-        findVisibleThirdLinkDropdown() {
-            const dropdowns = document.querySelectorAll('.el-select-dropdown.custom-down-select-search');
-            for (const dropdown of dropdowns) {
-                try {
-                    const style = window.getComputedStyle(dropdown);
-                    if (style.display !== 'none' && style.visibility !== 'hidden') {
-                        return dropdown;
-                    }
-                } catch (e) {
-                    continue;
-                }
+        isDropdownVisible(dropdown) {
+            if (!dropdown) return false;
+            try {
+                const style = window.getComputedStyle(dropdown);
+                return style.display !== 'none' && style.visibility !== 'hidden';
+            } catch (e) {
+                return false;
             }
-            return null;
+        },
+
+        resetActivePickerDropdown() {
+            if (!this.isDropdownVisible(this.activePickerDropdown)) {
+                this.activePickerDropdown = null;
+            }
+        },
+
+        getVisibleDropdowns(options = {}) {
+            const { preferThirdLink = false } = options;
+            const selector = preferThirdLink
+                ? '.el-select-dropdown.custom-down-select-search'
+                : '.el-select-dropdown';
+            return Array.from(document.querySelectorAll(selector)).filter(dropdown => this.isDropdownVisible(dropdown));
+        },
+
+        async closeVisibleDropdowns(options = {}) {
+            const visibleDropdowns = this.getVisibleDropdowns(options);
+            if (visibleDropdowns.length === 0) {
+                this.activePickerDropdown = null;
+                return;
+            }
+
+            visibleDropdowns.forEach(dropdown => {
+                const input = dropdown.querySelector('input[type="text"]');
+                if (input) {
+                    try {
+                        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                        nativeSetter.call(input, '');
+                        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                        input.blur();
+                    } catch (e) {
+                        // ignore cleanup failures and continue with close attempts
+                    }
+                }
+            });
+
+            const escapeTarget = document.activeElement && document.activeElement !== document.body
+                ? document.activeElement
+                : document.body;
+            ['keydown', 'keyup'].forEach(eventType => {
+                escapeTarget.dispatchEvent(new KeyboardEvent(eventType, {
+                    bubbles: true,
+                    cancelable: true,
+                    key: 'Escape'
+                }));
+            });
+
+            document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            document.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            document.body.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+            await new Promise(resolve => setTimeout(resolve, 80));
+            this.activePickerDropdown = null;
+        },
+
+        findVisibleThirdLinkDropdown() {
+            this.resetActivePickerDropdown();
+            if (this.isDropdownVisible(this.activePickerDropdown) &&
+                this.activePickerDropdown.classList.contains('custom-down-select-search')) {
+                return this.activePickerDropdown;
+            }
+
+            const visible = this.getVisibleDropdowns({ preferThirdLink: true });
+            return visible[0] || null;
         },
 
         findDropdownForPicker(options = {}) {
+            this.resetActivePickerDropdown();
+            if (this.isDropdownVisible(options.lockedDropdown)) {
+                return options.lockedDropdown;
+            }
             if (options.preferThirdLink) {
                 const d = this.findVisibleThirdLinkDropdown();
                 if (d) return d;
@@ -1617,6 +1746,7 @@
                     if (dropdown) {
                         const input = dropdown.querySelector('input[type="text"]');
                         if (input) {
+                            this.activePickerDropdown = dropdown;
                             resolve(input);
                             return;
                         }
@@ -1632,37 +1762,110 @@
             });
         },
 
-        async selectDropdownOption(text, logger, timeout = 1200, options = {}) {
-            const startTime = Date.now();
+        getSelectableDropdownItems(dropdown) {
+            if (!dropdown) return [];
+            return Array.from(dropdown.querySelectorAll('.el-select-dropdown__item')).filter(item => {
+                try {
+                    const style = window.getComputedStyle(item);
+                    return !item.classList.contains('disabled') &&
+                        !item.classList.contains('is-disabled') &&
+                        style.display !== 'none' &&
+                        style.visibility !== 'hidden';
+                } catch (e) {
+                    return false;
+                }
+            });
+        },
+
+        findDropdownCandidate(items = [], text = '', options = {}) {
             const normalizedTarget = this.normalizeFieldLabel(text).toLowerCase();
+            if (!normalizedTarget || items.length === 0) return null;
+
+            const exactMatch = items.find(item => this.normalizeFieldLabel(item.textContent).toLowerCase() === normalizedTarget);
+            if (exactMatch) {
+                return { item: exactMatch, reason: 'exact' };
+            }
+
+            const partialMatch = items.find(item => {
+                const normalizedText = this.normalizeFieldLabel(item.textContent).toLowerCase();
+                return normalizedText.includes(normalizedTarget) || normalizedTarget.includes(normalizedText);
+            });
+            if (partialMatch) {
+                return { item: partialMatch, reason: 'partial' };
+            }
+
+            if (options.allowSingleCandidateFallback !== false && items.length === 1) {
+                return { item: items[0], reason: 'single' };
+            }
+
+            return null;
+        },
+
+        clickDropdownCandidate(candidate, logger) {
+            if (!candidate || !candidate.item) return false;
+            candidate.item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            candidate.item.click();
+            if (logger) {
+                const suffix = candidate.reason === 'single' ? '（唯一候选）' : '';
+                logger.success('选择下拉选项' + suffix + ': ' + candidate.item.textContent.trim());
+            }
+            return true;
+        },
+
+        async selectDropdownOption(text, logger, timeout = 2200, options = {}) {
+            const startTime = Date.now();
 
             while (Date.now() - startTime < timeout) {
                 const dropdown = this.findDropdownForPicker(options);
                 if (dropdown) {
-                    const items = Array.from(dropdown.querySelectorAll('.el-select-dropdown__item')).filter(item => {
-                        try {
-                            const style = window.getComputedStyle(item);
-                            return !item.classList.contains('disabled') &&
-                                !item.classList.contains('is-disabled') &&
-                                style.display !== 'none' &&
-                                style.visibility !== 'hidden';
-                        } catch (e) {
-                            return false;
-                        }
-                    });
+                    const items = this.getSelectableDropdownItems(dropdown);
+                    const candidate = this.findDropdownCandidate(items, text, options);
+                    if (candidate) {
+                        return this.clickDropdownCandidate(candidate, logger);
+                    }
+                }
 
+                await new Promise(resolve => setTimeout(resolve, 80));
+            }
+
+            if (logger) logger.warn('候选尚未刷新，准备二次等待: ' + text);
+            await new Promise(resolve => setTimeout(resolve, 350));
+
+            const retryDeadline = Date.now() + 900;
+            while (Date.now() < retryDeadline) {
+                const dropdown = this.findDropdownForPicker(options);
+                if (dropdown) {
+                    const items = this.getSelectableDropdownItems(dropdown);
+                    const candidate = this.findDropdownCandidate(items, text, options);
+                    if (candidate) {
+                        return this.clickDropdownCandidate(candidate, logger);
+                    }
+                }
+                await new Promise(resolve => setTimeout(resolve, 80));
+            }
+
+            if (logger) logger.warn('二次等待后仍无候选: ' + text);
+            return false;
+        },
+
+        async selectDropdownOptionLegacy(text, logger, timeout = 1200, options = {}) {
+            const startTime = Date.now();
+
+            while (Date.now() - startTime < timeout) {
+                const dropdown = this.findDropdownForPicker(options);
+                if (dropdown) {
+                    const items = this.getSelectableDropdownItems(dropdown);
                     if (items.length > 0) {
+                        const normalizedTarget = this.normalizeFieldLabel(text).toLowerCase();
                         const exactMatch = items.find(item => this.normalizeFieldLabel(item.textContent).toLowerCase() === normalizedTarget);
                         const partialMatch = items.find(item => {
                             const normalizedText = this.normalizeFieldLabel(item.textContent).toLowerCase();
                             return normalizedText.includes(normalizedTarget) || normalizedTarget.includes(normalizedText);
                         });
-                        // 不要用「当前已选中」项作为回退；无精确/模糊匹配时不点 items[0]，避免误选
                         const candidate = exactMatch || partialMatch;
                         if (candidate) {
                             candidate.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                             candidate.click();
-
                             if (logger) logger.success('选择下拉选项: ' + candidate.textContent.trim());
                             return true;
                         }
@@ -1677,6 +1880,37 @@
         },
 
         async fillDropdownSearch(text, logger, delay = 100, options = {}) {
+            const searchInput = await this.waitForDropdownSearchInput(1800, options);
+            if (!searchInput) {
+                if (logger) logger.warn('未找到下拉搜索框');
+                return false;
+            }
+
+            try {
+                searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                searchInput.focus();
+                await new Promise(resolve => setTimeout(resolve, delay));
+
+                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                nativeSetter.call(searchInput, text);
+
+                searchInput.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                searchInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+                searchInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: text[0] || 'a' }));
+                searchInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: text[text.length - 1] || 'a' }));
+
+                await new Promise(resolve => setTimeout(resolve, delay));
+                const selected = await this.selectDropdownOption(text, logger, 2200, options);
+                if (selected && logger) logger.success('填充下拉框: ' + text);
+                return selected;
+            } catch (e) {
+                if (logger) logger.error('下拉框填充失败: ' + e.message);
+                return false;
+            }
+        },
+
+        async fillDropdownSearchLegacy(text, logger, delay = 100, options = {}) {
             const searchInput = await this.waitForDropdownSearchInput(1200, options);
             if (!searchInput) {
                 if (logger) logger.warn('未找到下拉搜索框');
@@ -1698,7 +1932,7 @@
                 searchInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: text[text.length - 1] || 'a' }));
 
                 await new Promise(resolve => setTimeout(resolve, delay));
-                const selected = await this.selectDropdownOption(text, logger, 1200, options);
+                const selected = await this.selectDropdownOptionLegacy(text, logger, 1200, options);
                 if (selected && logger) logger.success('填充下拉框: ' + text);
                 return selected;
             } catch (e) {
@@ -1843,7 +2077,7 @@
 
             const expected = this.normalizeFieldLabel(expectedValue || '').toLowerCase();
             const current = this.normalizeFieldLabel(currentValue || '').toLowerCase();
-            if (!expected || !current || current === '???') {
+            if (!expected || !current || current === '请选择' || current === '???') {
                 return false;
             }
 
@@ -1873,6 +2107,20 @@
             });
         },
 
+        async confirmThirdLinkFieldApplied(labelTexts = [], expectedValue = '', timeout = 1500, options = {}) {
+            const applied = await this.waitForThirdLinkFieldValue(labelTexts, expectedValue, timeout, options);
+            if (applied) return true;
+
+            const currentValue = this.getThirdLinkFieldDisplayValue(labelTexts);
+            const normalizedCurrent = this.normalizeFieldLabel(currentValue || '').toLowerCase();
+            const normalizedExpected = this.normalizeFieldLabel(expectedValue || '').toLowerCase();
+            if (!normalizedExpected || !normalizedCurrent || normalizedCurrent === '请选择' || normalizedCurrent === '???') {
+                return false;
+            }
+
+            return normalizedCurrent.includes(normalizedExpected) || normalizedExpected.includes(normalizedCurrent);
+        },
+
         async openThirdLinkElSelectDropdown(labelTexts, fieldName, logFn) {
             const maxAttempts = 4;
             const log = typeof logFn === 'function' ? logFn : () => {};
@@ -1885,6 +2133,7 @@
                     continue;
                 }
 
+                await this.closeVisibleDropdowns({ preferThirdLink: true });
                 const selectEl = input.closest('.el-select');
                 const scrollTarget = selectEl || input;
                 scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2022,6 +2271,224 @@
         }
     };
 
+    const TranslationService = {
+        translateViaGoogle(text, timeout = 6000) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=zh-CN&dt=t&q=${encodeURIComponent(text)}`,
+                    timeout,
+                    onload: (response) => {
+                        try {
+                            const result = JSON.parse(response.responseText);
+                            if (result && result[0] && result[0][0] && result[0][0][0]) {
+                                resolve(result[0][0][0]);
+                            } else {
+                                reject(new Error('Google API format error'));
+                            }
+                        } catch (e) {
+                            reject(e);
+                        }
+                    },
+                    onerror: reject,
+                    ontimeout: reject
+                });
+            });
+        },
+
+        translateViaMyMemory(text, timeout = 6000) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=en|zh',
+                    timeout,
+                    onload: (response) => {
+                        try {
+                            const result = JSON.parse(response.responseText);
+                            resolve(result.responseData.translatedText);
+                        } catch (e) {
+                            reject(e);
+                        }
+                    },
+                    onerror: reject,
+                    ontimeout: reject
+                });
+            });
+        },
+
+        translateViaGLM4Flash(text, timeout = 6000) {
+            return new Promise((resolve, reject) => {
+                const apiKey = GM_getValue('glm_api_key_v1', '');
+                const modelVersion = GM_getValue('glm_model_version_v1', 'glm-4-flash-250414');
+
+                if (!apiKey) {
+                    return reject(new Error('未配置智谱API Key (请在油猴菜单中设置)'));
+                }
+
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    data: JSON.stringify({
+                        model: modelVersion,
+                        messages: [
+                            { role: 'system', content: '你是一个专业翻译引擎。用户会给出原文和目标语言，你只输出译文，不要解释，不要添加额外内容。' },
+                            { role: 'user', content: `请将下面文本翻译成中文：\n\n"${text}"` }
+                        ],
+                        temperature: 0.3,
+                        max_tokens: 512
+                    }),
+                    timeout,
+                    onload: (response) => {
+                        try {
+                            const result = JSON.parse(response.responseText);
+                            if (result.error) {
+                                reject(new Error(result.error.message || 'GLM API error'));
+                            } else if (result.choices && result.choices[0] && result.choices[0].message) {
+                                let content = result.choices[0].message.content.trim();
+                                content = content.replace(/^["“'‘]+|["”'’]+$/g, '');
+                                resolve(content);
+                            } else {
+                                reject(new Error('GLM API format error'));
+                            }
+                        } catch (e) {
+                            reject(e);
+                        }
+                    },
+                    onerror: reject,
+                    ontimeout: reject
+                });
+            });
+        },
+
+        getTencentTranslateConfig() {
+            return {
+                secretId: (GM_getValue('tencent_translate_secret_id_v1', '') || '').trim(),
+                secretKey: (GM_getValue('tencent_translate_secret_key_v1', '') || '').trim(),
+                region: 'ap-beijing',
+                projectId: '0'
+            };
+        },
+
+        bufferToHex(buffer) {
+            return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        },
+
+        async sha256Hex(message) {
+            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
+            return this.bufferToHex(digest);
+        },
+
+        async hmacSha256Raw(key, message) {
+            const rawKey = typeof key === 'string' ? new TextEncoder().encode(key) : key;
+            const cryptoKey = await crypto.subtle.importKey('raw', rawKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+            const signature = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(message));
+            return new Uint8Array(signature);
+        },
+
+        async hmacSha256Hex(key, message) {
+            return this.bufferToHex(await this.hmacSha256Raw(key, message));
+        },
+
+        async translateViaTencent(text, timeout = 6000) {
+            const config = this.getTencentTranslateConfig();
+            if (!config.secretId || !config.secretKey) {
+                throw new Error('未配置腾讯翻译 SecretId / SecretKey（请在油猴菜单中设置）');
+            }
+            if (!crypto || !crypto.subtle) {
+                throw new Error('当前环境缺少 Web Crypto，无法调用腾讯翻译');
+            }
+
+            const host = 'tmt.tencentcloudapi.com';
+            const service = 'tmt';
+            const action = 'TextTranslate';
+            const version = '2018-03-21';
+            const timestamp = Math.floor(Date.now() / 1000);
+            const date = new Date(timestamp * 1000).toISOString().slice(0, 10);
+            const payload = JSON.stringify({
+                SourceText: text,
+                Source: 'auto',
+                Target: 'zh',
+                ProjectId: Number.parseInt(config.projectId || '0', 10) || 0
+            });
+
+            const canonicalHeaders = 'content-type:application/json; charset=utf-8\n' +
+                'host:' + host + '\n' +
+                'x-tc-action:' + action.toLowerCase() + '\n';
+            const signedHeaders = 'content-type;host;x-tc-action';
+            const hashedPayload = await this.sha256Hex(payload);
+            const canonicalRequest = [
+                'POST',
+                '/',
+                '',
+                canonicalHeaders,
+                signedHeaders,
+                hashedPayload
+            ].join('\n');
+
+            const credentialScope = date + '/' + service + '/tc3_request';
+            const stringToSign = [
+                'TC3-HMAC-SHA256',
+                String(timestamp),
+                credentialScope,
+                await this.sha256Hex(canonicalRequest)
+            ].join('\n');
+
+            const secretDate = await this.hmacSha256Raw('TC3' + config.secretKey, date);
+            const secretService = await this.hmacSha256Raw(secretDate, service);
+            const secretSigning = await this.hmacSha256Raw(secretService, 'tc3_request');
+            const signature = await this.hmacSha256Hex(secretSigning, stringToSign);
+            const authorization = 'TC3-HMAC-SHA256 ' +
+                'Credential=' + config.secretId + '/' + credentialScope + ', ' +
+                'SignedHeaders=' + signedHeaders + ', ' +
+                'Signature=' + signature;
+
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: 'https://' + host,
+                    headers: {
+                        'Authorization': authorization,
+                        'Content-Type': 'application/json; charset=utf-8',
+                        'Host': host,
+                        'X-TC-Action': action,
+                        'X-TC-Timestamp': String(timestamp),
+                        'X-TC-Version': version,
+                        'X-TC-Region': config.region
+                    },
+                    data: payload,
+                    timeout,
+                    onload: (response) => {
+                        try {
+                            const result = JSON.parse(response.responseText);
+                            const body = result && result.Response ? result.Response : null;
+                            if (!body) {
+                                reject(new Error('Tencent API format error'));
+                                return;
+                            }
+                            if (body.Error) {
+                                reject(new Error(body.Error.Message || body.Error.Code || 'Tencent API error'));
+                                return;
+                            }
+                            if (body.TargetText) {
+                                resolve(String(body.TargetText).trim());
+                                return;
+                            }
+                            reject(new Error('Tencent API missing TargetText'));
+                        } catch (e) {
+                            reject(e);
+                        }
+                    },
+                    onerror: reject,
+                    ontimeout: reject
+                });
+            });
+        }
+    };
+
     // =========================================================================
     // 模块 A：普通工单助手 - 自动翻译与内部描述复制（完全独立）
     // =========================================================================
@@ -2046,8 +2513,8 @@
             fullServer: "【2.1.60全服】：",
             testServer: "【2.1.66测服】：",
             debounceDelay: 300,
-            translationPanelDelayAfterChannelMs: 2000,
-            translationPanelForceDelayMs: 4000,
+            translationPanelDelayAfterChannelMs: 100,
+            translationPanelForceDelayMs: 2000,
             thirdLinkStepGap: 120,
             thirdLinkConfirmTimeout: 1500,
             thirdLinkMaxFillAttempts: 2,
@@ -2057,6 +2524,7 @@
 
         let state = {
             currentTicketID: null,
+            ticketFlowToken: 0,
             copiedText: '',
             leftHeading: '',
             versionNumber: '',
@@ -2077,6 +2545,7 @@
             pendingTranslationPanel: null,
             translationPanelDelayTimer: null,
             translationPanelForceTimer: null,
+            translationPanelView: null,
             channelDecisionStartedAt: 0,
             channelDecisionResolvedAt: 0
         };
@@ -2097,6 +2566,30 @@
             const msg = args.join(' ');
             console.error('[普通工单 错误]', ...args);
             logger.error(msg);
+        }
+
+        function getTicketContext() {
+            return {
+                ticketId: state.currentTicketID,
+                token: state.ticketFlowToken
+            };
+        }
+
+        function isTicketContextStale(ticketContext) {
+            if (!ticketContext) return false;
+            if (ticketContext.token !== state.ticketFlowToken) return true;
+            if (!ticketContext.ticketId || !state.currentTicketID) return false;
+            return ticketContext.ticketId !== state.currentTicketID;
+        }
+
+        function ensureTicketContextActive(ticketContext, stage = '') {
+            if (!ticketContext || !isTicketContextStale(ticketContext)) {
+                return true;
+            }
+
+            const prefix = stage ? (stage + '：') : '';
+            log(prefix + '检测到工单已切换，终止旧自动处理链路');
+            return false;
         }
 
         function extractFaxiandiedai(heading) {
@@ -2447,8 +2940,8 @@
             return {
                 secretId: (GM_getValue('tencent_translate_secret_id_v1', '') || '').trim(),
                 secretKey: (GM_getValue('tencent_translate_secret_key_v1', '') || '').trim(),
-                region: (GM_getValue('tencent_translate_region_v1', 'ap-beijing') || 'ap-beijing').trim(),
-                projectId: (GM_getValue('tencent_translate_project_id_v1', '0') || '0').trim()
+                region: 'ap-beijing',
+                projectId: '0'
             };
         }
 
@@ -2475,10 +2968,10 @@
         async function translateViaTencent(text) {
             const config = getTencentTranslateConfig();
             if (!config.secretId || !config.secretKey) {
-                throw new Error('Tencent translate SecretId / SecretKey is not configured');
+                throw new Error('未配置腾讯翻译 SecretId / SecretKey（请在油猴菜单中设置）');
             }
             if (!crypto || !crypto.subtle) {
-                throw new Error('Web Crypto is unavailable, Tencent translate cannot run');
+                throw new Error('当前环境缺少 Web Crypto，无法调用腾讯翻译');
             }
 
             const host = 'tmt.tencentcloudapi.com';
@@ -2581,6 +3074,10 @@
             state.pendingTranslationPanel = null;
         }
 
+        function resetTranslationPanelView() {
+            state.translationPanelView = null;
+        }
+
         function showQueuedTranslationPanel(reason = '') {
             const payload = state.pendingTranslationPanel;
             if (!payload) return;
@@ -2600,8 +3097,8 @@
             if (reason) {
                 log(reason);
             }
-            log('Render translation panel');
-            renderTranslationLogPanel(payload.originalText, payload.panelData);
+            log('渲染多源翻译面板');
+            renderTranslationLogPanel(payload.originalText, payload.panelData, payload.ticketId);
         }
 
         function queueTranslationPanel(originalText, panelData, ticketId = state.currentTicketID) {
@@ -2617,40 +3114,49 @@
                 state.translationPanelDelayTimer = null;
             }
 
-            if (state.channelDecisionResolvedAt > 0) {
-                const elapsed = Date.now() - state.channelDecisionResolvedAt;
-                const waitMs = Math.max(0, CONFIG.translationPanelDelayAfterChannelMs - elapsed);
-                state.translationPanelDelayTimer = setTimeout(() => {
-                    showQueuedTranslationPanel('Channel handling resolved, render translation panel');
-                }, waitMs);
-                return;
-            }
+                if (state.channelDecisionResolvedAt > 0) {
+                    const elapsed = Date.now() - state.channelDecisionResolvedAt;
+                    const waitMs = Math.max(0, CONFIG.translationPanelDelayAfterChannelMs - elapsed);
+                    state.translationPanelDelayTimer = setTimeout(() => {
+                        showQueuedTranslationPanel('渠道处理已稳定，展示多源面板');
+                    }, waitMs);
+                    return;
+                }
 
             if (state.channelDecisionStartedAt > 0) {
                 const elapsed = Date.now() - state.channelDecisionStartedAt;
                 if (elapsed >= CONFIG.translationPanelForceDelayMs) {
-                    showQueuedTranslationPanel('Channel handling timed out, force render translation panel');
+                    showQueuedTranslationPanel('渠道处理超过 2 秒未稳定，直接展示多源面板');
                 } else {
-                    log('Translation panel is queued until channel handling settles');
+                    log('多源面板已排队，等待渠道处理稳定');
                 }
                 return;
             }
 
-            log('Translation panel is queued until channel stage starts');
+            log('多源面板已排队，等待进入渠道处理阶段');
         }
 
-        function markChannelDecisionStarted() {
+        function markChannelDecisionStarted(ticketContext = null) {
+            if (!ensureTicketContextActive(ticketContext, '渠道处理开始')) {
+                return;
+            }
             state.channelDecisionStartedAt = Date.now();
             state.channelDecisionResolvedAt = 0;
             if (state.translationPanelForceTimer) {
                 clearTimeout(state.translationPanelForceTimer);
             }
             state.translationPanelForceTimer = setTimeout(() => {
-                showQueuedTranslationPanel('Channel handling timed out, force render translation panel');
+                if (!ensureTicketContextActive(ticketContext, '渠道处理超时展示')) {
+                    return;
+                }
+                showQueuedTranslationPanel('渠道处理超过 2 秒未稳定，直接展示多源面板');
             }, CONFIG.translationPanelForceDelayMs);
         }
 
-        function markChannelDecisionResolved() {
+        function markChannelDecisionResolved(ticketContext = null) {
+            if (!ensureTicketContextActive(ticketContext, '渠道处理完成')) {
+                return;
+            }
             state.channelDecisionResolvedAt = Date.now();
             if (state.translationPanelForceTimer) {
                 clearTimeout(state.translationPanelForceTimer);
@@ -2665,33 +3171,84 @@
                 clearTimeout(state.translationPanelDelayTimer);
             }
             state.translationPanelDelayTimer = setTimeout(() => {
-                showQueuedTranslationPanel('Channel handling completed and panel delay elapsed');
+                showQueuedTranslationPanel('渠道处理完成，100ms 后展示多源面板');
             }, CONFIG.translationPanelDelayAfterChannelMs);
         }
 
-        function renderTranslationLogPanel(originalText, results) {
+        function renderTranslationLogPanel(originalText, results, ticketId = state.currentTicketID) {
             if (!UI) return;
 
-            const container = document.createElement('div');
-            container.className = 'ai-translation-panel';
-            container.style.cssText = 'margin-top: 6px; padding: 8px; background: #fff; border-radius: 6px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.04);';
+            let view = state.translationPanelView;
+            const shouldCreateNew = !view ||
+                view.ticketId !== ticketId ||
+                view.originalText !== originalText ||
+                !view.container ||
+                !view.container.isConnected;
 
-            const origDiv = document.createElement('div');
-            origDiv.style.cssText = 'font-size: 11px; color: #86868b; margin-bottom: 8px; word-break: break-all; border-bottom: 1px dashed #f0f0f0; padding-bottom: 4px;';
-            origDiv.textContent = `原文: ${originalText}`;
-            container.appendChild(origDiv);
+            if (shouldCreateNew) {
+                const container = document.createElement('div');
+                container.className = 'ai-translation-panel';
+                container.style.cssText = 'margin-top: 6px; padding: 8px; background: #fff; border-radius: 6px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.04);';
 
-            const resultsDiv = document.createElement('div');
-            resultsDiv.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;';
+                const origDiv = document.createElement('div');
+                origDiv.style.cssText = 'font-size: 11px; color: #86868b; margin-bottom: 8px; word-break: break-all; border-bottom: 1px dashed #f0f0f0; padding-bottom: 4px;';
+                container.appendChild(origDiv);
 
-            let selectedText = '';
-            const editInput = document.createElement('input');
+                const resultsDiv = document.createElement('div');
+                resultsDiv.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;';
+                container.appendChild(resultsDiv);
+
+                const editRow = document.createElement('div');
+                editRow.style.cssText = 'display: flex; gap: 6px; align-items: center; border-top: 1px solid #f0f0f0; padding-top: 8px;';
+
+                const editInput = document.createElement('input');
+                editInput.type = 'text';
+                editInput.autocomplete = 'off';
+                editInput.spellcheck = false;
+                editInput.disabled = false;
+                editInput.readOnly = false;
+                editInput.removeAttribute('readonly');
+                editInput.removeAttribute('disabled');
+                editInput.setAttribute('data-ai-translation-input', '1');
+                editInput.style.cssText = 'flex: 1; padding: 4px 8px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 11px; outline: none; pointer-events: auto; background: #fff; color: #1d1d1f;';
+                editInput.onfocus = () => editInput.style.borderColor = '#3370ff';
+                editInput.onblur = () => editInput.style.borderColor = '#d9d9d9';
+                editInput.addEventListener('mousedown', (e) => e.stopPropagation());
+                editInput.addEventListener('click', (e) => e.stopPropagation());
+                editInput.addEventListener('keydown', (e) => e.stopPropagation());
+
+                const replaceBtn = document.createElement('button');
+                replaceBtn.textContent = '修改并替换标题';
+                replaceBtn.style.cssText = 'padding: 4px 10px; background: #3370ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; transition: background 0.2s;';
+                replaceBtn.onmouseover = () => replaceBtn.style.background = '#285acc';
+                replaceBtn.onmouseout = () => replaceBtn.style.background = '#3370ff';
+
+                editRow.appendChild(editInput);
+                editRow.appendChild(replaceBtn);
+                container.appendChild(editRow);
+
+                logger.custom(container);
+                view = {
+                    ticketId,
+                    originalText,
+                    container,
+                    origDiv,
+                    resultsDiv,
+                    editInput,
+                    replaceBtn,
+                    selectedText: ''
+                };
+                state.translationPanelView = view;
+            }
 
             // 优先选择第一个成功的结果
             const firstSuccess = results.find(r => r.success);
-            if (firstSuccess) {
-                selectedText = firstSuccess.text;
+            if (!view.selectedText && firstSuccess) {
+                view.selectedText = firstSuccess.text;
             }
+
+            view.origDiv.textContent = `原文: ${originalText}`;
+            view.resultsDiv.innerHTML = '';
 
             results.forEach((r, idx) => {
                 const row = document.createElement('div');
@@ -2704,12 +3261,14 @@
                 if (r.success) {
                     const radio = document.createElement('input');
                     radio.type = 'radio';
-                    radio.name = `trans_${Date.now()}`;
+                    radio.name = `trans_${ticketId || 'pending'}`;
                     radio.value = r.text;
-                    // 如果是第一个成功的，默认选中
-                    radio.checked = (r === firstSuccess);
+                    radio.checked = view.selectedText ? view.selectedText === r.text : (r === firstSuccess);
                     radio.style.margin = '0';
-                    radio.onchange = () => { selectedText = r.text; editInput.value = r.text; };
+                    radio.onchange = () => {
+                        view.selectedText = r.text;
+                        view.editInput.value = r.text;
+                    };
 
                     const textSpan = document.createElement('span');
                     textSpan.style.cssText = 'flex: 1; word-break: break-all; cursor: pointer; font-size: 11px; color: #1d1d1f;';
@@ -2751,67 +3310,40 @@
                     row.appendChild(label);
                     row.appendChild(errorSpan);
                 }
-                resultsDiv.appendChild(row);
+                view.resultsDiv.appendChild(row);
             });
-            container.appendChild(resultsDiv);
 
-            const editRow = document.createElement('div');
-            editRow.style.cssText = 'display: flex; gap: 6px; align-items: center; border-top: 1px solid #f0f0f0; padding-top: 8px;';
+            if (!view.selectedText && firstSuccess) {
+                view.selectedText = firstSuccess.text;
+            }
+            view.editInput.value = view.selectedText || '';
+            view.editInput.oninput = () => { view.selectedText = view.editInput.value; };
 
-            editInput.type = 'text';
-            editInput.value = selectedText;
-            editInput.autocomplete = 'off';
-            editInput.spellcheck = false;
-            editInput.disabled = false;
-            editInput.readOnly = false;
-            editInput.removeAttribute('readonly');
-            editInput.removeAttribute('disabled');
-            editInput.setAttribute('data-ai-translation-input', '1');
-            editInput.style.cssText = 'flex: 1; padding: 4px 8px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 11px; outline: none; pointer-events: auto; background: #fff; color: #1d1d1f;';
-            editInput.onfocus = () => editInput.style.borderColor = '#3370ff';
-            editInput.onblur = () => editInput.style.borderColor = '#d9d9d9';
-            editInput.addEventListener('mousedown', (e) => e.stopPropagation());
-            editInput.addEventListener('click', (e) => e.stopPropagation());
-            editInput.addEventListener('keydown', (e) => e.stopPropagation());
-            editInput.addEventListener('input', () => { selectedText = editInput.value; });
-
-            const replaceBtn = document.createElement('button');
-            replaceBtn.textContent = '修改并替换标题';
-            replaceBtn.style.cssText = 'padding: 4px 10px; background: #3370ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; transition: background 0.2s;';
-            replaceBtn.onmouseover = () => replaceBtn.style.background = '#285acc';
-            replaceBtn.onmouseout = () => replaceBtn.style.background = '#3370ff';
-
-            replaceBtn.onclick = () => {
+            view.replaceBtn.onclick = () => {
                 const input = SharedUtils.findTitleInputRobust();
                 if (input) {
-                    const editedText = normalizeTranslatedText(editInput.value.trim()) || normalizeTranslatedText(originalText);
+                    const editedText = normalizeTranslatedText(view.editInput.value.trim()) || normalizeTranslatedText(originalText);
                     const newTitle = SharedUtils.hasChinese(originalText)
                         ? (state.leftHeading + editedText)
                         : buildTitleFromContent(originalText, editedText);
 
                     const success = SharedUtils.simulateInputValue(input, newTitle);
                     if (success) {
-                        const oldText = replaceBtn.textContent;
-                        replaceBtn.textContent = '替换成功!';
-                        replaceBtn.style.background = '#52c41a';
+                        const oldText = view.replaceBtn.textContent;
+                        view.replaceBtn.textContent = '替换成功!';
+                        view.replaceBtn.style.background = '#52c41a';
                         setTimeout(() => {
-                            replaceBtn.textContent = oldText;
-                            replaceBtn.style.background = '#3370ff';
+                            view.replaceBtn.textContent = oldText;
+                            view.replaceBtn.style.background = '#3370ff';
                         }, 1500);
                     } else {
-                        replaceBtn.textContent = '替换失败';
-                        replaceBtn.style.background = '#ff4d4f';
+                        view.replaceBtn.textContent = '替换失败';
+                        view.replaceBtn.style.background = '#ff4d4f';
                     }
                 } else {
                     alert('未找到标题输入框');
                 }
             };
-
-            editRow.appendChild(editInput);
-            editRow.appendChild(replaceBtn);
-            container.appendChild(editRow);
-
-            logger.custom(container);
         }
 
         function normalizeTranslatedText(text) {
@@ -2823,23 +3355,24 @@
             return normalized.replace(/^["“'‘]+|["”'’]+$/g, '').trim();
         }
 
-        function buildTitleFromContent(contentText, translatedText = '') {
+        function buildTitleFromContent(contentText, translatedText = '', options = {}) {
             const original = (contentText || '').trim();
             const translated = normalizeTranslatedText(translatedText);
+            const prefix = typeof options.prefix === 'string' ? options.prefix : state.leftHeading;
 
             if (!original) {
-                return state.leftHeading + translated;
+                return prefix + translated;
             }
 
             if (SharedUtils.hasChinese(original)) {
-                return state.leftHeading + (translated || original);
+                return prefix + (translated || original);
             }
 
             if (!translated || translated === original) {
-                return state.leftHeading + original;
+                return prefix + original;
             }
 
-            return state.leftHeading + translated + ' ' + original;
+            return prefix + translated + ' ' + original;
         }
 
         function buildTranslationPanelData(originalText, successfulResults = [], failedResults = [], options = {}) {
@@ -2906,15 +3439,43 @@
                 { name: 'GLM', fn: translateViaGLM4Flash, timeout: CONFIG.translateTimeoutOther }
             ];
 
+            const collectedResults = new Map();
+            const failedResults = new Map();
+            let hasCountedTranslate = false;
+
+            const syncTranslationPanel = () => {
+                const successful = Array.from(collectedResults.values()).filter(r => r.text && normalizeTranslatedText(r.text) !== sourceText);
+                const failed = Array.from(failedResults.values());
+
+                if (successful.length > 0 && !hasCountedTranslate) {
+                    state.translateCount++;
+                    hasCountedTranslate = true;
+                }
+
+                const panelData = buildTranslationPanelData(sourceText, successful, failed, {
+                    includeOriginal: containsTraditionalChinese || successful.length === 0,
+                    originalLabel: containsTraditionalChinese ? '\u539f\u6587\u7e41\u4e2d' : '\u539f\u6587\u4fdd\u7559'
+                });
+
+                queueTranslationPanel(sourceText, panelData, ticketIdSnapshot);
+            };
+
             const promises = translators.map(t => {
                 return new Promise((resolve) => {
                     const timer = setTimeout(() => resolve({ name: t.name, success: false, error: 'timeout' }), t.timeout);
                     Promise.resolve(t.fn(sourceText)).then(res => {
                         clearTimeout(timer);
-                        resolve({ name: t.name, success: true, text: res });
+                        const result = { name: t.name, success: true, text: res };
+                        collectedResults.set(t.name, result);
+                        failedResults.delete(t.name);
+                        syncTranslationPanel();
+                        resolve(result);
                     }).catch(err => {
                         clearTimeout(timer);
-                        resolve({ name: t.name, success: false, error: err.message });
+                        const result = { name: t.name, success: false, error: err.message };
+                        failedResults.set(t.name, result);
+                        syncTranslationPanel();
+                        resolve(result);
                     });
                 });
             });
@@ -2937,20 +3498,8 @@
                 });
             });
 
-            Promise.all(promises).then((allResults) => {
-                const successful = allResults.filter(r => r.success && r.text && normalizeTranslatedText(r.text) !== sourceText);
-                const failed = allResults.filter(r => !r.success);
-
-                if (successful.length > 0) {
-                    state.translateCount++;
-                }
-
-                const panelData = buildTranslationPanelData(sourceText, successful, failed, {
-                    includeOriginal: containsTraditionalChinese || successful.length === 0,
-                    originalLabel: containsTraditionalChinese ? '\u539f\u6587\u7e41\u4e2d' : '\u539f\u6587\u4fdd\u7559'
-                });
-
-                queueTranslationPanel(sourceText, panelData, ticketIdSnapshot);
+            Promise.all(promises).then(() => {
+                syncTranslationPanel();
             });
 
             const bestText = await firstSuccessPromise;
@@ -2961,7 +3510,7 @@
             return sourceText;
         }
 
-        async function processTitleWithRetry() {
+        async function processTitleWithRetry(ticketContext = getTicketContext()) {
             if (state.hasProcessedTitle || state.isTitleProcessing) {
                 log('标题已处理过或正在处理中，跳过');
                 return;
@@ -2973,6 +3522,10 @@
 
             try {
                 while (Date.now() - startTime < CONFIG.titleMaxWaitTime) {
+                    if (!ensureTicketContextActive(ticketContext, '标题处理')) {
+                        return;
+                    }
+
                     const input = SharedUtils.findTitleInputRobust();
                     if (input) {
                         const currentValue = input.value || '';
@@ -2990,6 +3543,9 @@
                             if (contentPart) {
                                 log('标题中未找到冒号，按完整标题内容进入翻译流程:', contentPart);
                                 translatedContent = await translateText(contentPart);
+                                if (!ensureTicketContextActive(ticketContext, '标题翻译回填')) {
+                                    return;
+                                }
                             }
                             const newTitle = buildTitleFromContent(contentPart, translatedContent);
                             log('标题中未找到冒号，应用新标题:', newTitle);
@@ -3012,8 +3568,9 @@
 
                             const prefixPattern = /^【[\d.]+[^】]*(?:全服|测服)】：?$/;
                             const isOldPrefix = prefixPattern.test(prefixPart);
+                            const hasServerHeading = !!state.leftHeading;
 
-                            if (currentValue.startsWith(state.leftHeading) && !isOldPrefix) {
+                            if (hasServerHeading && currentValue.startsWith(state.leftHeading) && !isOldPrefix) {
                                 log('标题前缀已是最新版本，跳过');
                                 state.hasProcessedTitle = true;
                                 return;
@@ -3025,16 +3582,25 @@
                             if (contentPart) {
                                 log('开始翻译标题内容:', contentPart);
                                 translatedContent = await translateText(contentPart);
+                                if (!ensureTicketContextActive(ticketContext, '标题翻译回填')) {
+                                    return;
+                                }
                             } else {
                                 log('标题内容为空，跳过翻译');
                             }
 
-                            const newTitle = buildTitleFromContent(contentPart, translatedContent);
+                            const newTitle = hasServerHeading
+                                ? buildTitleFromContent(contentPart, translatedContent)
+                                : (prefixPart.trim()
+                                    ? (prefixPart.trim() + '：' + buildTitleFromContent(contentPart, translatedContent, { prefix: '' }))
+                                    : buildTitleFromContent(contentPart, translatedContent, { prefix: '' }));
 
                             log('应用新标题:', newTitle);
-                            if (isOldPrefix) {
+                            if (hasServerHeading && isOldPrefix) {
                                 log('检测到旧版本前缀，将替换: ' + prefixPart + ' -> ' + state.leftHeading);
                                 logger.log('更新标题前缀: ' + prefixPart + ' → ' + state.leftHeading);
+                            } else if (!hasServerHeading) {
+                                log('未识别到 ServerID，保留原标题前缀，仅翻译冒号后内容');
                             }
 
                             const success = SharedUtils.simulateInputValue(input, newTitle);
@@ -3055,25 +3621,50 @@
             log('等待超时，未能处理标题');
         }
 
-        async function handleChannelFocus() {
+        async function handleChannelFocus(ticketContext = getTicketContext()) {
             if (state.channelFilled) return;
+            if (!ensureTicketContextActive(ticketContext, '渠道焦点兜底')) return;
             log('渠道输入框获得焦点，准备填充:', state.channelText);
             const success = await SharedUtils.fillDropdownSearch(state.channelText, logger);
+            if (!ensureTicketContextActive(ticketContext, '渠道焦点兜底')) return;
             if (success) state.channelFilled = true;
         }
 
-        async function handleIterationFocus() {
+        async function handleIterationFocus(ticketContext = getTicketContext()) {
             if (state.iterationFilled) return;
+            if (!ensureTicketContextActive(ticketContext, '发现迭代焦点兜底')) return;
             log('发现迭代输入框获得焦点，准备填充:', state.faxiandiedai);
-            const success = await SharedUtils.fillDropdownSearch(state.faxiandiedai, logger);
-            if (success) state.iterationFilled = true;
+            const success = await SharedUtils.fillDropdownSearch(state.faxiandiedai, logger, 150, {
+                preferThirdLink: true,
+                allowSingleCandidateFallback: false
+            });
+            if (!ensureTicketContextActive(ticketContext, '发现迭代焦点兜底')) return;
+            const applied = await SharedUtils.confirmThirdLinkFieldApplied(
+                ['发现迭代', '发现迭代*'],
+                state.faxiandiedai,
+                Math.max(CONFIG.thirdLinkConfirmTimeout, 2600)
+            );
+            if (!ensureTicketContextActive(ticketContext, '发现迭代焦点兜底')) return;
+            if (applied) {
+                state.iterationFilled = true;
+                if (!success) {
+                    log('发现迭代字段值已生效，按成功处理');
+                    logger.success('发现迭代字段值已生效，按成功处理');
+                }
+                return;
+            }
+
+            const currentValue = SharedUtils.getThirdLinkFieldDisplayValue(['发现迭代', '发现迭代*']);
+            logger.warn('发现迭代填充失败，当前字段值: ' + (currentValue || '(空)'));
         }
 
-        async function handleCreatorFocus() {
+        async function handleCreatorFocus(ticketContext = getTicketContext()) {
             if (state.creatorFilled) return;
+            if (!ensureTicketContextActive(ticketContext, '创建人焦点兜底')) return;
             const name = CONFIG.thirdLinkCreatorName;
             log('创建人输入框获得焦点，准备填充:', name);
             const success = await SharedUtils.fillDropdownSearch(name, logger, 150, { preferThirdLink: true });
+            if (!ensureTicketContextActive(ticketContext, '创建人焦点兜底')) return;
             if (success) state.creatorFilled = true;
         }
 
@@ -3087,27 +3678,57 @@
                 return true;
             }
 
+            const ticketContext = options.ticketContext || null;
+            const confirmOptions = { ...options };
+            delete confirmOptions.ticketContext;
             const maxAttempts = CONFIG.thirdLinkMaxFillAttempts || 2;
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
+                    return false;
+                }
                 const opened = await SharedUtils.openThirdLinkElSelectDropdown(labelTexts, fieldName, (msg) => {
                     log(msg);
                 });
+                if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
+                    return false;
+                }
                 if (!opened) {
                     log(fieldName + ' \u4e0b\u62c9\u6846\u81ea\u52a8\u5c55\u5f00\u5931\u8d25\uff0c\u4fdd\u7559\u7126\u70b9\u76d1\u542c\u515c\u5e95');
-                    logger.warn(fieldName + ' \u4e0b\u62c9\u6846\u81ea\u52a8\u5c55\u5f00\u5931\u8d25');
                 } else {
-                    const success = await SharedUtils.fillDropdownSearch(value, logger, 150, { preferThirdLink: true });
-                    if (success) {
-                        const applied = await SharedUtils.waitForThirdLinkFieldValue(labelTexts, value, CONFIG.thirdLinkConfirmTimeout, options);
-                        if (applied) {
-                            state[stateKey] = true;
+                    const isIterationField = stateKey === 'iterationFilled';
+                    const success = await SharedUtils.fillDropdownSearch(value, logger, 150, {
+                        preferThirdLink: true,
+                        allowSingleCandidateFallback: !isIterationField
+                    });
+                    if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
+                        return false;
+                    }
+                    const confirmTimeout = isIterationField
+                        ? Math.max(CONFIG.thirdLinkConfirmTimeout, 2600)
+                        : CONFIG.thirdLinkConfirmTimeout;
+                    const applied = await SharedUtils.confirmThirdLinkFieldApplied(labelTexts, value, confirmTimeout, confirmOptions);
+                    if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
+                        return false;
+                    }
+                    if (applied) {
+                        state[stateKey] = true;
+                        if (!success) {
+                            log(fieldName + ' 字段值已生效，按成功处理:', value);
+                            logger.success(fieldName + ' 字段值已生效，按成功处理: ' + value);
+                        } else {
                             log(fieldName + ' \u81ea\u52a8\u586b\u5145\u6210\u529f:', value);
                             logger.success(fieldName + ' \u81ea\u52a8\u586b\u5145\u6210\u529f: ' + value);
-                            return true;
                         }
+                        return true;
+                    }
 
-                        log(fieldName + ' \u5df2\u89e6\u53d1\u9009\u62e9\uff0c\u4f46\u5b57\u6bb5\u503c\u672a\u7a33\u5b9a\uff0c\u51c6\u5907\u91cd\u8bd5 ' + attempt + '/' + maxAttempts);
-                        logger.warn(fieldName + ' \u5b57\u6bb5\u503c\u672a\u7a33\u5b9a\uff0c\u51c6\u5907\u91cd\u8bd5 ' + attempt + '/' + maxAttempts);
+                    if (attempt < maxAttempts) {
+                        if (isIterationField) {
+                            const currentValue = SharedUtils.getThirdLinkFieldDisplayValue(labelTexts);
+                            logger.warn(fieldName + ' 本次尝试后仍未生效，当前字段值: ' + (currentValue || '(空)') + '，准备重试 ' + attempt + '/' + maxAttempts);
+                        } else {
+                            log(fieldName + ' \u672c\u6b21\u5c1d\u8bd5\u540e\u4ecd\u672a\u786e\u8ba4\u751f\u6548\uff0c\u51c6\u5907\u91cd\u8bd5 ' + attempt + '/' + maxAttempts);
+                        }
                     }
                 }
 
@@ -3116,8 +3737,14 @@
                 }
             }
 
-            log(fieldName + ' \u81ea\u52a8\u586b\u5145\u5931\u8d25\uff0c\u4fdd\u7559\u7126\u70b9\u76d1\u542c\u515c\u5e95');
-            logger.warn(fieldName + ' \u81ea\u52a8\u586b\u5145\u5931\u8d25');
+            const currentValue = stateKey === 'iterationFilled'
+                ? SharedUtils.getThirdLinkFieldDisplayValue(labelTexts)
+                : '';
+            const failMsg = stateKey === 'iterationFilled'
+                ? fieldName + ' \u81ea\u52a8\u586b\u5145\u5931\u8d25\uff0c\u5f53\u524d\u5b57\u6bb5\u503c: ' + (currentValue || '(空)') + '\uff0c\u4fdd\u7559\u7126\u70b9\u76d1\u542c\u515c\u5e95'
+                : fieldName + ' \u81ea\u52a8\u586b\u5145\u5931\u8d25\uff0c\u4fdd\u7559\u7126\u70b9\u76d1\u542c\u515c\u5e95';
+            console.warn('[普通工单]', failMsg);
+            logger.warn(failMsg);
             return false;
         }
 
@@ -3145,15 +3772,36 @@
             }
         }
 
-        async function processThirdLinkFields() {
+        async function processThirdLinkFields(options = {}) {
+            const { skipServerDependentFields = false, ticketContext = getTicketContext() } = options;
+            if (!ensureTicketContextActive(ticketContext, '关联第三方自动处理')) {
+                return;
+            }
             ensureNormalThirdLinkTargetsReady();
             await new Promise(resolve => setTimeout(resolve, 400));
-            await autoFillThirdLinkField(['\u521b\u5efa\u4eba', '\u521b\u5efa\u4eba*'], CONFIG.thirdLinkCreatorName, 'creatorFilled', '\u521b\u5efa\u4eba', { allowPartial: false });
+            if (!ensureTicketContextActive(ticketContext, '关联第三方自动处理')) {
+                return;
+            }
+            await autoFillThirdLinkField(['\u521b\u5efa\u4eba', '\u521b\u5efa\u4eba*'], CONFIG.thirdLinkCreatorName, 'creatorFilled', '\u521b\u5efa\u4eba', {
+                allowPartial: false,
+                ticketContext
+            });
+            if (skipServerDependentFields) {
+                return;
+            }
             await new Promise(resolve => setTimeout(resolve, CONFIG.thirdLinkStepGap));
-            await autoFillThirdLinkField(['\u53d1\u73b0\u8fed\u4ee3', '\u53d1\u73b0\u8fed\u4ee3*'], state.faxiandiedai, 'iterationFilled', '\u53d1\u73b0\u8fed\u4ee3', { allowPartial: false });
+            if (!ensureTicketContextActive(ticketContext, '关联第三方自动处理')) {
+                return;
+            }
+            await autoFillThirdLinkField(['\u53d1\u73b0\u8fed\u4ee3', '\u53d1\u73b0\u8fed\u4ee3*'], state.faxiandiedai, 'iterationFilled', '\u53d1\u73b0\u8fed\u4ee3', {
+                ticketContext
+            });
             await new Promise(resolve => setTimeout(resolve, CONFIG.thirdLinkStepGap));
 
-            markChannelDecisionStarted();
+            if (!ensureTicketContextActive(ticketContext, '渠道自动处理')) {
+                return;
+            }
+            markChannelDecisionStarted(ticketContext);
             try {
                 const desiredCh = state.channelText;
                 const currentCh = SharedUtils.getThirdLinkFieldDisplayValue(['\u6e20\u9053', '\u6e20\u9053*']);
@@ -3162,10 +3810,13 @@
                     logger.log('\u6e20\u9053\u5df2\u662f\u76ee\u6807\u503c\uff0c\u8df3\u8fc7: ' + desiredCh);
                     state.channelFilled = true;
                 } else {
-                    await autoFillThirdLinkField(['\u6e20\u9053', '\u6e20\u9053*'], state.channelText, 'channelFilled', '\u6e20\u9053', { channelMatch: true });
+                    await autoFillThirdLinkField(['\u6e20\u9053', '\u6e20\u9053*'], state.channelText, 'channelFilled', '\u6e20\u9053', {
+                        channelMatch: true,
+                        ticketContext
+                    });
                 }
             } finally {
-                markChannelDecisionResolved();
+                markChannelDecisionResolved(ticketContext);
             }
         }
 
@@ -3179,15 +3830,16 @@
 
                 const titleInput = SharedUtils.findTitleInputRobust();
                 const titleValue = titleInput ? titleInput.value || '' : '';
-                if (/mcgg/i.test(titleValue)) return;
+                if (SharedUtils.isMCGGTitle(titleValue, { silent: true })) return;
 
                 const labelText = SharedUtils.findLabelText(target);
+                const ticketContext = getTicketContext();
                 if (labelText.includes('渠道')) {
-                    await handleChannelFocus();
+                    await handleChannelFocus(ticketContext);
                 } else if (labelText.includes('创建人')) {
-                    await handleCreatorFocus();
+                    await handleCreatorFocus(ticketContext);
                 } else if (labelText.includes('发现迭代')) {
-                    await handleIterationFocus();
+                    await handleIterationFocus(ticketContext);
                 }
             };
 
@@ -3207,6 +3859,11 @@
         function resetState() {
             removeFocusListener();
             clearTranslationPanelTimingState();
+            resetTranslationPanelView();
+            SharedUtils.closeVisibleDropdowns({ preferThirdLink: true }).catch(() => {});
+            state.ticketFlowToken += 1;
+            state.isProcessing = false;
+            state.isTitleProcessing = false;
             state.hasProcessedTitle = false;
             state.channelFilled = false;
             state.creatorFilled = false;
@@ -3218,6 +3875,11 @@
             state.faxiandiedai = '';
             state.abnormalLoadRetries = 0;
             state.lastExtractedLength = 0;
+            state.lastProcessTime = 0;
+            if (state.processDebounceTimer) {
+                clearTimeout(state.processDebounceTimer);
+                state.processDebounceTimer = null;
+            }
         }
 
         function shouldSkipProcess() {
@@ -3244,7 +3906,7 @@
 
             const titleInput = SharedUtils.findTitleInputRobust();
             const titleValue = titleInput ? titleInput.value || '' : '';
-            if (/mcgg/i.test(titleValue)) {
+            if (SharedUtils.isMCGGTitle(titleValue, { silent: true })) {
                 log('检测到MCGG标识，普通工单模块跳过');
                 return;
             }
@@ -3252,6 +3914,7 @@
             state.isProcessing = true;
             state.lastProcessTime = Date.now();
             log('========== 开始处理普通工单 ==========');
+            const ticketContext = getTicketContext();
 
             try {
                 const internalDesc = await extractInternalDescriptionWithRetry();
@@ -3263,13 +3926,19 @@
 
                 const hasValidServer = determineHeading(internalDesc);
                 if (!hasValidServer) {
-                    log('ServerID验证失败，跳过标题处理');
-                    state.isProcessing = false;
-                    return;
+                    log('未识别到 ServerID，跳过发现迭代/渠道自动处理');
+                    logger.warn('未识别到 ServerID，跳过发现迭代/渠道自动处理');
+                    log('标题翻译与多源面板继续执行');
                 }
 
-                await processTitleWithRetry();
-                await processThirdLinkFields();
+                await processTitleWithRetry(ticketContext);
+                if (!ensureTicketContextActive(ticketContext, '普通工单主流程')) {
+                    return;
+                }
+                await processThirdLinkFields({ skipServerDependentFields: !hasValidServer, ticketContext });
+                if (!ensureTicketContextActive(ticketContext, '普通工单主流程')) {
+                    return;
+                }
                 setupFocusListener();
                 log('========== 普通工单处理完成 ==========');
             } catch (e) {
@@ -3282,7 +3951,7 @@
         async function handleNormalZoneClick(element) {
             const titleInput = SharedUtils.findTitleInputRobust();
             const titleValue = titleInput ? titleInput.value || '' : '';
-            if (/mcgg/i.test(titleValue)) {
+            if (SharedUtils.isMCGGTitle(titleValue, { silent: true })) {
                 log('当前工单为MCGG类型，请使用MCGG按钮');
                 return;
             }
@@ -3371,8 +4040,6 @@
                     alert(`模型已更新为: ${selectedModel}`);
                 }
             });
-        }
-
             GM_registerMenuCommand('设置腾讯翻译 SecretId', () => {
                 const currentValue = GM_getValue('tencent_translate_secret_id_v1', '');
                 const input = prompt('请输入腾讯翻译 SecretId:', currentValue);
@@ -3390,18 +4057,7 @@
                     alert('Tencent SecretKey 已保存！');
                 }
             });
-
-            GM_registerMenuCommand('设置腾讯翻译地域/ProjectId', () => {
-                const currentRegion = GM_getValue('tencent_translate_region_v1', 'ap-beijing');
-                const currentProjectId = GM_getValue('tencent_translate_project_id_v1', '0');
-                const regionInput = prompt('请输入腾讯翻译地域 (例：ap-beijing):', currentRegion);
-                if (regionInput === null) return;
-                const projectIdInput = prompt('请输入 ProjectId (默认 0):', currentProjectId);
-                if (projectIdInput === null) return;
-                GM_setValue('tencent_translate_region_v1', regionInput.trim() || 'ap-beijing');
-                GM_setValue('tencent_translate_project_id_v1', projectIdInput.trim() || '0');
-                alert('Tencent 翻译地域与 ProjectId 已保存！');
-            });
+        }
 
         function monitorTicketChange() {
             setInterval(() => {
@@ -3453,17 +4109,23 @@
         if (!shouldRunNormalModule()) return;
 
         const CONFIG = {
+            translateDailyLimit: 150,
+            translateTimeoutGoogle: 6000,
+            translateTimeoutOther: 6000,
             debug: true,
             checkInterval: 500,
             titleRetryDelay: 1000,
             titleMaxWaitTime: 100000,
             internalDescRetryDelay: 3000,
             internalDescMaxRetries: 5,
+            removeTrailingPunctuation: true,
             mcggfullServerLists: ["【MCGG】- 1.2.60：", "【MCGG】- 1.2.58：", "【MCGG】- 1.2.62：", "【MCGG】- 1.2.56："],
             mcggtestServerLists: ["【MCGG】- 1.2.60：", "【MCGG】- 1.2.58：", "【MCGG】- 1.2.62：", "【MCGG】- 1.2.56："],
             mcggfullServer: "【MCGG】- 1.2.58：",
             mcggtestServer: "【MCGG】- 1.2.60：",
             debounceDelay: 300,
+            translationPanelDelayAfterChannelMs: 100,
+            translationPanelForceDelayMs: 2000,
             thirdLinkStepGap: 120,
             thirdLinkConfirmTimeout: 1500,
             thirdLinkMaxFillAttempts: 2,
@@ -3473,12 +4135,14 @@
 
         let state = {
             currentTicketID: null,
+            ticketFlowToken: 0,
             copiedText: '',
             leftHeading: '',
             versionNumber: '',
             channelText: '',
             faxiandiedai: '',
             hasProcessedTitle: false,
+            translateCount: 0,
             isProcessing: false,
             isTitleProcessing: false,
             channelFilled: false,
@@ -3486,7 +4150,14 @@
             iterationFilled: false,
             moduleFilled: false,
             focusListenersAttached: false,
-            lastProcessTime: 0
+            lastProcessTime: 0,
+            pendingTranslationPanel: null,
+            translationPanelDelayTimer: null,
+            translationPanelForceTimer: null,
+            translationPanelView: null,
+            channelDecisionStartedAt: 0,
+            channelDecisionResolvedAt: 0,
+            lastTitleTranslationContext: null
         };
 
         let mcggFocusinHandler = null;
@@ -3511,26 +4182,66 @@
             }
         }
 
+        function getTicketContext() {
+            return {
+                ticketId: state.currentTicketID,
+                token: state.ticketFlowToken
+            };
+        }
+
+        function isTicketContextStale(ticketContext) {
+            if (!ticketContext) return false;
+            if (ticketContext.token !== state.ticketFlowToken) return true;
+            if (!ticketContext.ticketId || !state.currentTicketID) return false;
+            return ticketContext.ticketId !== state.currentTicketID;
+        }
+
+        function ensureTicketContextActive(ticketContext, stage = '') {
+            if (!ticketContext || !isTicketContextStale(ticketContext)) {
+                return true;
+            }
+
+            const prefix = stage ? (stage + '：') : '';
+            log(prefix + '检测到工单已切换，终止旧自动处理链路', 'warn');
+            return false;
+        }
+
         function isMCGGTitle(titleValue, options = {}) {
             return SharedUtils.isMCGGTitle(titleValue, options);
         }
 
         function resetState() {
+            const currentTicketID = state.currentTicketID;
+            const ticketFlowToken = state.ticketFlowToken + 1;
+            const translateCount = state.translateCount;
             removeMCGGFocusListener();
+            clearTranslationPanelTimingState();
+            resetTranslationPanelView();
+            SharedUtils.closeVisibleDropdowns({ preferThirdLink: true }).catch(() => {});
             state = {
-                currentTicketID: state.currentTicketID,
+                currentTicketID,
+                ticketFlowToken,
                 copiedText: '',
                 leftHeading: '',
                 versionNumber: '',
                 channelText: '',
                 faxiandiedai: '',
                 hasProcessedTitle: false,
+                translateCount,
                 isProcessing: false,
                 isTitleProcessing: false,
                 channelFilled: false,
                 creatorFilled: false,
                 iterationFilled: false,
                 moduleFilled: false,
+                focusListenersAttached: false,
+                pendingTranslationPanel: null,
+                translationPanelDelayTimer: null,
+                translationPanelForceTimer: null,
+                translationPanelView: null,
+                channelDecisionStartedAt: 0,
+                channelDecisionResolvedAt: 0,
+                lastTitleTranslationContext: null,
                 lastProcessTime: 0
             };
         }
@@ -3560,6 +4271,7 @@
             state.isProcessing = true;
             state.lastProcessTime = Date.now();
             log('========== 开始处理MCGG工单 ==========');
+            const ticketContext = getTicketContext();
 
             try {
                 const description = await extractMCGGInternalDescriptionWithRetry();
@@ -3570,11 +4282,18 @@
 
                 const hasValidServer = determineMCGGHeading(description);
                 if (!hasValidServer) {
-                    log('ServerID验证失败，跳过标题处理', 'warn');
+                    log('未识别到 ServerID，跳过发现迭代/渠道自动处理', 'warn');
+                    log('标题翻译与多源面板继续执行', 'warn');
                 }
 
-                await processMCGGTitleWithRetry();
-                await processMCGGThirdLinkFields();
+                await processMCGGTitleWithRetry(ticketContext);
+                if (!ensureTicketContextActive(ticketContext, 'MCGG 主流程')) {
+                    return;
+                }
+                await processMCGGThirdLinkFields({ skipServerDependentFields: !hasValidServer, ticketContext });
+                if (!ensureTicketContextActive(ticketContext, 'MCGG 主流程')) {
+                    return;
+                }
                 setupMCGGFocusListener();
                 log('========== MCGG工单处理完成 ==========', 'success');
             } finally {
@@ -3730,14 +4449,496 @@
             return true;
         }
 
-        async function processMCGGTitleWithRetry() {
-            if (state.hasProcessedTitle || state.isTitleProcessing) {
-                log('标题已处理或正在处理中，跳过');
+        function clearTranslationPanelTimingState() {
+            if (state.translationPanelDelayTimer) {
+                clearTimeout(state.translationPanelDelayTimer);
+                state.translationPanelDelayTimer = null;
+            }
+            if (state.translationPanelForceTimer) {
+                clearTimeout(state.translationPanelForceTimer);
+                state.translationPanelForceTimer = null;
+            }
+            state.channelDecisionStartedAt = 0;
+            state.channelDecisionResolvedAt = 0;
+            state.pendingTranslationPanel = null;
+        }
+
+        function resetTranslationPanelView() {
+            state.translationPanelView = null;
+            state.lastTitleTranslationContext = null;
+        }
+
+        function getTitleContextKey(titleContext = null) {
+            if (!titleContext) return '';
+            return [
+                titleContext.hasColon ? '1' : '0',
+                titleContext.hasServerHeading ? '1' : '0',
+                titleContext.targetPrefix || '',
+                titleContext.prefixPart || '',
+                titleContext.contentText || ''
+            ].join('|');
+        }
+
+        function showQueuedTranslationPanel(reason = '') {
+            const payload = state.pendingTranslationPanel;
+            if (!payload) return;
+            if (payload.ticketId && state.currentTicketID && payload.ticketId !== state.currentTicketID) {
+                state.pendingTranslationPanel = null;
+                return;
+            }
+            if (state.translationPanelDelayTimer) {
+                clearTimeout(state.translationPanelDelayTimer);
+                state.translationPanelDelayTimer = null;
+            }
+            if (state.translationPanelForceTimer) {
+                clearTimeout(state.translationPanelForceTimer);
+                state.translationPanelForceTimer = null;
+            }
+            state.pendingTranslationPanel = null;
+            if (reason) {
+                log(reason);
+            }
+            log('渲染 MCGG 多源翻译面板');
+            renderTranslationLogPanel(payload.originalText, payload.panelData, payload.ticketId, payload.titleContext);
+        }
+
+        function queueTranslationPanel(originalText, panelData, ticketId = state.currentTicketID, titleContext = null) {
+            if (!panelData || panelData.length === 0) {
+                log('MCGG 无多源面板数据，跳过');
                 return;
             }
 
-            if (!state.leftHeading) {
-                log('未设置标题前缀，跳过标题处理', 'warn');
+            state.pendingTranslationPanel = {
+                originalText,
+                panelData,
+                ticketId,
+                titleContext: titleContext ? { ...titleContext } : null
+            };
+
+            if (state.translationPanelDelayTimer) {
+                clearTimeout(state.translationPanelDelayTimer);
+                state.translationPanelDelayTimer = null;
+            }
+
+            if (state.channelDecisionResolvedAt > 0) {
+                const elapsed = Date.now() - state.channelDecisionResolvedAt;
+                const waitMs = Math.max(0, CONFIG.translationPanelDelayAfterChannelMs - elapsed);
+                state.translationPanelDelayTimer = setTimeout(() => {
+                    showQueuedTranslationPanel('MCGG 渠道处理已稳定，展示多源面板');
+                }, waitMs);
+                return;
+            }
+
+            if (state.channelDecisionStartedAt > 0) {
+                const elapsed = Date.now() - state.channelDecisionStartedAt;
+                if (elapsed >= CONFIG.translationPanelForceDelayMs) {
+                    showQueuedTranslationPanel('MCGG 渠道处理超过 2 秒未稳定，直接展示多源面板');
+                } else {
+                    log('MCGG 多源面板已排队，等待渠道处理稳定');
+                }
+                return;
+            }
+
+            log('MCGG 多源面板已排队，等待进入渠道处理阶段');
+        }
+
+        function markChannelDecisionStarted(ticketContext = null) {
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 渠道处理开始')) {
+                return;
+            }
+            state.channelDecisionStartedAt = Date.now();
+            state.channelDecisionResolvedAt = 0;
+            if (state.translationPanelForceTimer) {
+                clearTimeout(state.translationPanelForceTimer);
+            }
+            state.translationPanelForceTimer = setTimeout(() => {
+                if (!ensureTicketContextActive(ticketContext, 'MCGG 渠道处理超时展示')) {
+                    return;
+                }
+                showQueuedTranslationPanel('MCGG 渠道处理超过 2 秒未稳定，直接展示多源面板');
+            }, CONFIG.translationPanelForceDelayMs);
+        }
+
+        function markChannelDecisionResolved(ticketContext = null) {
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 渠道处理完成')) {
+                return;
+            }
+            state.channelDecisionResolvedAt = Date.now();
+            if (state.translationPanelForceTimer) {
+                clearTimeout(state.translationPanelForceTimer);
+                state.translationPanelForceTimer = null;
+            }
+
+            if (!state.pendingTranslationPanel) {
+                return;
+            }
+
+            if (state.translationPanelDelayTimer) {
+                clearTimeout(state.translationPanelDelayTimer);
+            }
+            state.translationPanelDelayTimer = setTimeout(() => {
+                showQueuedTranslationPanel('MCGG 渠道处理完成，100ms 后展示多源面板');
+            }, CONFIG.translationPanelDelayAfterChannelMs);
+        }
+
+        function renderTranslationLogPanel(originalText, results, ticketId = state.currentTicketID, titleContext = null) {
+            if (!UI) return;
+
+            const contextKey = getTitleContextKey(titleContext);
+            let view = state.translationPanelView;
+            const shouldCreateNew = !view ||
+                view.ticketId !== ticketId ||
+                view.originalText !== originalText ||
+                view.titleContextKey !== contextKey ||
+                !view.container ||
+                !view.container.isConnected;
+
+            if (shouldCreateNew) {
+                const container = document.createElement('div');
+                container.className = 'ai-translation-panel';
+                container.style.cssText = 'margin-top: 6px; padding: 8px; background: #fff; border-radius: 6px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.04);';
+
+                const origDiv = document.createElement('div');
+                origDiv.style.cssText = 'font-size: 11px; color: #86868b; margin-bottom: 8px; word-break: break-all; border-bottom: 1px dashed #f0f0f0; padding-bottom: 4px;';
+                container.appendChild(origDiv);
+
+                const resultsDiv = document.createElement('div');
+                resultsDiv.style.cssText = 'display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;';
+                container.appendChild(resultsDiv);
+
+                const editRow = document.createElement('div');
+                editRow.style.cssText = 'display: flex; gap: 6px; align-items: center; border-top: 1px solid #f0f0f0; padding-top: 8px;';
+
+                const editInput = document.createElement('input');
+                editInput.type = 'text';
+                editInput.autocomplete = 'off';
+                editInput.spellcheck = false;
+                editInput.disabled = false;
+                editInput.readOnly = false;
+                editInput.removeAttribute('readonly');
+                editInput.removeAttribute('disabled');
+                editInput.setAttribute('data-ai-translation-input', '1');
+                editInput.style.cssText = 'flex: 1; padding: 4px 8px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 11px; outline: none; pointer-events: auto; background: #fff; color: #1d1d1f;';
+                editInput.onfocus = () => editInput.style.borderColor = '#3370ff';
+                editInput.onblur = () => editInput.style.borderColor = '#d9d9d9';
+                editInput.addEventListener('mousedown', (e) => e.stopPropagation());
+                editInput.addEventListener('click', (e) => e.stopPropagation());
+                editInput.addEventListener('keydown', (e) => e.stopPropagation());
+
+                const replaceBtn = document.createElement('button');
+                replaceBtn.textContent = '修改并替换标题';
+                replaceBtn.style.cssText = 'padding: 4px 10px; background: #3370ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; transition: background 0.2s;';
+                replaceBtn.onmouseover = () => replaceBtn.style.background = '#285acc';
+                replaceBtn.onmouseout = () => replaceBtn.style.background = '#3370ff';
+
+                editRow.appendChild(editInput);
+                editRow.appendChild(replaceBtn);
+                container.appendChild(editRow);
+
+                logger.custom(container);
+                view = {
+                    ticketId,
+                    originalText,
+                    titleContextKey: contextKey,
+                    titleContext,
+                    container,
+                    origDiv,
+                    resultsDiv,
+                    editInput,
+                    replaceBtn,
+                    selectedText: ''
+                };
+                state.translationPanelView = view;
+            } else {
+                view.titleContext = titleContext || view.titleContext;
+                view.titleContextKey = contextKey;
+            }
+
+            const firstSuccess = results.find(r => r.success);
+            if (!view.selectedText && firstSuccess) {
+                view.selectedText = firstSuccess.text;
+            }
+
+            view.origDiv.textContent = `原文: ${originalText}`;
+            view.resultsDiv.innerHTML = '';
+
+            results.forEach((r) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display: flex; align-items: center; gap: 6px; margin-bottom: 4px;';
+
+                const label = document.createElement('span');
+                label.style.cssText = 'font-weight: 600; color: #0f9b8e; width: 75px; flex-shrink: 0; font-size: 10px; text-align: right;';
+                label.textContent = r.name + ':';
+
+                if (r.success) {
+                    const radio = document.createElement('input');
+                    radio.type = 'radio';
+                    radio.name = `mcgg_trans_${ticketId || 'pending'}`;
+                    radio.value = r.text;
+                    radio.checked = view.selectedText ? view.selectedText === r.text : (r === firstSuccess);
+                    radio.style.margin = '0';
+                    radio.onchange = () => {
+                        view.selectedText = r.text;
+                        view.editInput.value = r.text;
+                    };
+
+                    const textSpan = document.createElement('span');
+                    textSpan.style.cssText = 'flex: 1; word-break: break-all; cursor: pointer; font-size: 11px; color: #1d1d1f;';
+                    textSpan.textContent = r.text;
+                    textSpan.onclick = () => { radio.checked = true; radio.onchange(); };
+
+                    const copyBtn = document.createElement('button');
+                    copyBtn.textContent = '复制';
+                    copyBtn.style.cssText = 'padding: 2px 6px; font-size: 10px; border-radius: 4px; border: 1px solid #d9d9d9; background: #f5f5f7; cursor: pointer; color: #1d1d1f;';
+                    copyBtn.onclick = async () => {
+                        await SharedUtils.copyText(r.text);
+                        const oldText = copyBtn.textContent;
+                        copyBtn.textContent = '已复制';
+                        copyBtn.style.background = '#e6f7ff';
+                        copyBtn.style.borderColor = '#91d5ff';
+                        copyBtn.style.color = '#1890ff';
+                        setTimeout(() => {
+                            copyBtn.textContent = oldText;
+                            copyBtn.style.background = '#f5f5f7';
+                            copyBtn.style.borderColor = '#d9d9d9';
+                            copyBtn.style.color = '#1d1d1f';
+                        }, 1000);
+                    };
+
+                    row.appendChild(radio);
+                    row.appendChild(label);
+                    row.appendChild(textSpan);
+                    row.appendChild(copyBtn);
+                } else {
+                    const errorSpan = document.createElement('span');
+                    errorSpan.style.cssText = 'flex: 1; font-size: 10px; color: #ff4d4f; font-style: italic;';
+                    errorSpan.textContent = `失败: ${r.error || 'unknown error'}`;
+
+                    row.appendChild(document.createElement('span'));
+                    row.children[0].style.width = '13px';
+                    row.children[0].style.display = 'inline-block';
+                    row.appendChild(label);
+                    row.appendChild(errorSpan);
+                }
+
+                view.resultsDiv.appendChild(row);
+            });
+
+            if (!view.selectedText && firstSuccess) {
+                view.selectedText = firstSuccess.text;
+            }
+            view.editInput.value = view.selectedText || '';
+            view.editInput.oninput = () => { view.selectedText = view.editInput.value; };
+
+            view.replaceBtn.onclick = () => {
+                const input = SharedUtils.findTitleInputRobust();
+                if (!input) {
+                    alert('未找到标题输入框');
+                    return;
+                }
+
+                const editedText = normalizeTranslatedText(view.editInput.value.trim()) || normalizeTranslatedText(originalText);
+                const newTitle = buildMCGGFinalTitle(originalText, editedText, view.titleContext);
+                const success = SharedUtils.simulateInputValue(input, newTitle);
+
+                if (success) {
+                    const oldText = view.replaceBtn.textContent;
+                    view.replaceBtn.textContent = '替换成功!';
+                    view.replaceBtn.style.background = '#52c41a';
+                    setTimeout(() => {
+                        view.replaceBtn.textContent = oldText;
+                        view.replaceBtn.style.background = '#3370ff';
+                    }, 1500);
+                } else {
+                    view.replaceBtn.textContent = '替换失败';
+                    view.replaceBtn.style.background = '#ff4d4f';
+                }
+            };
+        }
+
+        function normalizeTranslatedText(text) {
+            let normalized = (text || '').trim();
+            if (!normalized) return '';
+            if (CONFIG.removeTrailingPunctuation) {
+                normalized = normalized.replace(/[。.!?！？]+$/, '');
+            }
+            return normalized.replace(/^["“'‘]+|["”'’]+$/g, '').trim();
+        }
+
+        function buildMCGGTitleFromContent(contentText, translatedText = '', options = {}) {
+            const original = (contentText || '').trim();
+            const translated = normalizeTranslatedText(translatedText);
+            const prefix = typeof options.prefix === 'string' ? options.prefix : state.leftHeading;
+
+            if (!original) {
+                return prefix + translated;
+            }
+
+            if (SharedUtils.hasChinese(original)) {
+                return prefix + (translated || original);
+            }
+
+            if (!translated || translated === original) {
+                return prefix + original;
+            }
+
+            return prefix + translated + ' ' + original;
+        }
+
+        function buildMCGGFinalTitle(originalText, translatedText = '', titleContext = null) {
+            const context = titleContext || state.lastTitleTranslationContext || null;
+            const contentText = context && typeof context.contentText === 'string' ? context.contentText : originalText;
+
+            if (context && context.hasServerHeading) {
+                return buildMCGGTitleFromContent(contentText, translatedText, { prefix: context.targetPrefix || state.leftHeading });
+            }
+
+            if (context && context.hasColon) {
+                const preservedPrefix = (context.prefixPart || '').trim();
+                const translatedBody = buildMCGGTitleFromContent(contentText, translatedText, { prefix: '' });
+                return preservedPrefix ? (preservedPrefix + '：' + translatedBody) : translatedBody;
+            }
+
+            return buildMCGGTitleFromContent(contentText, translatedText, { prefix: '' });
+        }
+
+        function buildTranslationPanelData(originalText, successfulResults = [], failedResults = [], options = {}) {
+            const {
+                includeOriginal = false,
+                originalLabel = '原文保留'
+            } = options;
+
+            const panelData = [];
+            const seen = new Set();
+
+            const pushSuccessRow = (name, text) => {
+                const cleaned = normalizeTranslatedText(text);
+                if (!cleaned || seen.has(cleaned)) return;
+                seen.add(cleaned);
+                panelData.push({ name, success: true, text: cleaned });
+            };
+
+            if (includeOriginal) {
+                pushSuccessRow(originalLabel, originalText);
+            }
+
+            for (const result of successfulResults) {
+                pushSuccessRow(result.name, result.text);
+            }
+
+            for (const result of failedResults) {
+                panelData.push({ name: result.name, success: false, error: result.error });
+            }
+
+            return panelData;
+        }
+
+        async function translateText(text, titleContext = null) {
+            const sourceText = (text || '').trim();
+            if (!sourceText) return '';
+
+            const containsChinese = SharedUtils.hasChinese(sourceText);
+            const containsTraditionalChinese = SharedUtils.hasTraditionalChinese(sourceText);
+            const ticketIdSnapshot = state.currentTicketID;
+            const titleContextSnapshot = titleContext ? { ...titleContext } : null;
+
+            if (state.translateCount >= CONFIG.translateDailyLimit) {
+                log('已达翻译次数上限', 'warn');
+                queueTranslationPanel(sourceText, buildTranslationPanelData(sourceText, [], [], {
+                    includeOriginal: true,
+                    originalLabel: '原文保留'
+                }), ticketIdSnapshot, titleContextSnapshot);
+                return sourceText;
+            }
+
+            if (containsChinese && !containsTraditionalChinese) {
+                log('MCGG 标题已包含简体中文，跳过外部翻译但保留交互面板');
+                queueTranslationPanel(sourceText, buildTranslationPanelData(sourceText, [], [], {
+                    includeOriginal: true,
+                    originalLabel: '原文保留'
+                }), ticketIdSnapshot, titleContextSnapshot);
+                return sourceText;
+            }
+
+            const translators = [
+                { name: 'Google', fn: (value) => TranslationService.translateViaGoogle(value, CONFIG.translateTimeoutGoogle), timeout: CONFIG.translateTimeoutGoogle },
+                { name: 'MyMemory', fn: (value) => TranslationService.translateViaMyMemory(value, CONFIG.translateTimeoutOther), timeout: CONFIG.translateTimeoutOther },
+                { name: 'Tencent', fn: (value) => TranslationService.translateViaTencent(value, CONFIG.translateTimeoutOther), timeout: CONFIG.translateTimeoutOther },
+                { name: 'GLM', fn: (value) => TranslationService.translateViaGLM4Flash(value, CONFIG.translateTimeoutOther), timeout: CONFIG.translateTimeoutOther }
+            ];
+
+            const collectedResults = new Map();
+            const failedResults = new Map();
+            let hasCountedTranslate = false;
+
+            const syncTranslationPanel = () => {
+                const successful = Array.from(collectedResults.values()).filter(r => r.text && normalizeTranslatedText(r.text) !== sourceText);
+                const failed = Array.from(failedResults.values());
+
+                if (successful.length > 0 && !hasCountedTranslate) {
+                    state.translateCount++;
+                    hasCountedTranslate = true;
+                }
+
+                const panelData = buildTranslationPanelData(sourceText, successful, failed, {
+                    includeOriginal: containsTraditionalChinese || successful.length === 0,
+                    originalLabel: containsTraditionalChinese ? '原文繁中' : '原文保留'
+                });
+
+                queueTranslationPanel(sourceText, panelData, ticketIdSnapshot, titleContextSnapshot);
+            };
+
+            const promises = translators.map(t => {
+                return new Promise((resolve) => {
+                    const timer = setTimeout(() => resolve({ name: t.name, success: false, error: 'timeout' }), t.timeout);
+                    Promise.resolve(t.fn(sourceText)).then(res => {
+                        clearTimeout(timer);
+                        const result = { name: t.name, success: true, text: res };
+                        collectedResults.set(t.name, result);
+                        failedResults.delete(t.name);
+                        syncTranslationPanel();
+                        resolve(result);
+                    }).catch(err => {
+                        clearTimeout(timer);
+                        const result = { name: t.name, success: false, error: err.message };
+                        failedResults.set(t.name, result);
+                        syncTranslationPanel();
+                        resolve(result);
+                    });
+                });
+            });
+
+            let fastestResult = null;
+            const firstSuccessPromise = new Promise((resolve) => {
+                let pending = promises.length;
+                promises.forEach(p => {
+                    p.then(r => {
+                        if (r.success && !fastestResult) {
+                            fastestResult = r.text;
+                            resolve(r.text);
+                        }
+                        pending--;
+                        if (pending === 0 && !fastestResult) {
+                            resolve(null);
+                        }
+                    });
+                });
+            });
+
+            Promise.all(promises).then(() => {
+                syncTranslationPanel();
+            });
+
+            const bestText = await firstSuccessPromise;
+            if (bestText) {
+                return normalizeTranslatedText(bestText);
+            }
+            return sourceText;
+        }
+
+        async function processMCGGTitleWithRetry(ticketContext = getTicketContext()) {
+            if (state.hasProcessedTitle || state.isTitleProcessing) {
+                log('标题已处理或正在处理中，跳过');
                 return;
             }
 
@@ -3747,30 +4948,58 @@
 
             try {
                 while (Date.now() - startTime < CONFIG.titleMaxWaitTime) {
+                    if (!ensureTicketContextActive(ticketContext, 'MCGG 标题处理')) {
+                        return;
+                    }
+
                     const input = SharedUtils.findTitleInputRobust();
                     if (input) {
                         const currentValue = input.value || '';
-                        if (currentValue.startsWith(state.leftHeading)) {
-                            log('标题前缀已存在，跳过');
+                        const hasServerHeading = !!state.leftHeading;
+
+                        if (hasServerHeading && currentValue.startsWith(state.leftHeading)) {
+                            log('MCGG 标题前缀已是最新版本，跳过');
                             state.hasProcessedTitle = true;
                             return;
                         }
 
                         const colonMatch = currentValue.match(/[：:]/);
-                        let newTitle = '';
+                        const prefixPart = colonMatch ? currentValue.substring(0, colonMatch.index).trim() : '';
+                        const contentPart = colonMatch ? currentValue.substring(colonMatch.index + 1).trim() : currentValue.trim();
+                        const titleContext = {
+                            hasColon: !!colonMatch,
+                            prefixPart,
+                            contentText: contentPart,
+                            hasServerHeading,
+                            targetPrefix: hasServerHeading ? state.leftHeading : ''
+                        };
+                        state.lastTitleTranslationContext = { ...titleContext };
 
-                        if (!colonMatch) {
-                            newTitle = state.leftHeading + currentValue;
-                            log('标题中未找到冒号，直接插入前缀: ' + newTitle);
+                        let translatedContent = '';
+                        if (contentPart) {
+                            if (colonMatch) {
+                                log('开始翻译 MCGG 标题内容: ' + contentPart);
+                            } else {
+                                log('MCGG 标题中未找到冒号，按完整标题内容进入翻译流程: ' + contentPart);
+                            }
+                            translatedContent = await translateText(contentPart, titleContext);
+                            if (!ensureTicketContextActive(ticketContext, 'MCGG 标题翻译回填')) {
+                                return;
+                            }
                         } else {
-                            const contentPart = currentValue.substring(colonMatch.index + 1).trim();
-                            newTitle = state.leftHeading + contentPart;
+                            log('MCGG 标题内容为空，跳过翻译');
+                        }
+
+                        const newTitle = buildMCGGFinalTitle(contentPart, translatedContent, titleContext);
+                        log('应用 MCGG 新标题: ' + newTitle);
+                        if (!hasServerHeading && colonMatch) {
+                            log('未识别到 ServerID，保留原标题前缀，仅翻译冒号后内容', 'warn');
                         }
 
                         const success = SharedUtils.simulateInputValue(input, newTitle);
                         if (success) {
                             state.hasProcessedTitle = true;
-                            log('标题处理成功: ' + newTitle, 'success');
+                            log('MCGG 标题处理成功: ' + newTitle, 'success');
                             return;
                         }
                     }
@@ -3780,13 +5009,15 @@
                 state.isTitleProcessing = false;
             }
 
-            log('等待超时，未能处理标题', 'warn');
+            log('等待超时，未能处理 MCGG 标题', 'warn');
         }
 
-        async function handleMCGGChannelFocus() {
+        async function handleMCGGChannelFocus(ticketContext = getTicketContext()) {
             if (state.channelFilled) return;
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 渠道焦点兜底')) return;
             log('渠道输入框获得焦点，准备填充: ' + state.channelText);
             const success = await SharedUtils.fillDropdownSearch(state.channelText, logger);
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 渠道焦点兜底')) return;
             if (success) {
                 state.channelFilled = true;
                 log('渠道填充成功', 'success');
@@ -3795,23 +5026,41 @@
             }
         }
 
-        async function handleMCGGIterationFocus() {
+        async function handleMCGGIterationFocus(ticketContext = getTicketContext()) {
             if (state.iterationFilled) return;
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 发现迭代焦点兜底')) return;
             log('发现迭代输入框获得焦点，准备填充: ' + state.faxiandiedai);
-            const success = await SharedUtils.fillDropdownSearch(state.faxiandiedai, logger);
-            if (success) {
+            const success = await SharedUtils.fillDropdownSearch(state.faxiandiedai, logger, 150, {
+                preferThirdLink: true,
+                allowSingleCandidateFallback: false
+            });
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 发现迭代焦点兜底')) return;
+            const applied = await SharedUtils.confirmThirdLinkFieldApplied(
+                ['发现迭代', '发现迭代*'],
+                state.faxiandiedai,
+                Math.max(CONFIG.thirdLinkConfirmTimeout, 2600)
+            );
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 发现迭代焦点兜底')) return;
+            if (applied) {
                 state.iterationFilled = true;
-                log('发现迭代填充成功', 'success');
+                if (!success) {
+                    log('发现迭代字段值已生效，按成功处理', 'success');
+                } else {
+                    log('发现迭代填充成功', 'success');
+                }
             } else {
-                log('发现迭代填充失败', 'warn');
+                const currentValue = SharedUtils.getThirdLinkFieldDisplayValue(['发现迭代', '发现迭代*']);
+                log('发现迭代填充失败，当前字段值: ' + (currentValue || '(空)'), 'warn');
             }
         }
 
-        async function handleMCGGCreatorFocus() {
+        async function handleMCGGCreatorFocus(ticketContext = getTicketContext()) {
             if (state.creatorFilled) return;
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 创建人焦点兜底')) return;
             const name = CONFIG.thirdLinkCreatorName;
             log('创建人输入框获得焦点，准备填充: ' + name);
             const success = await SharedUtils.fillDropdownSearch(name, logger, 150, { preferThirdLink: true });
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 创建人焦点兜底')) return;
             if (success) {
                 state.creatorFilled = true;
                 log('创建人填充成功', 'success');
@@ -3820,10 +5069,12 @@
             }
         }
 
-        async function handleMCGGModuleFocus() {
+        async function handleMCGGModuleFocus(ticketContext = getTicketContext()) {
             if (state.moduleFilled) return;
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 功能模块焦点兜底')) return;
             log('功能模块输入框获得焦点，准备填充: ' + CONFIG.thirdLinkModuleName);
             const success = await SharedUtils.fillDropdownSearch(CONFIG.thirdLinkModuleName, logger, 100, { preferThirdLink: true });
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 功能模块焦点兜底')) return;
             if (success) {
                 state.moduleFilled = true;
                 log('功能模块填充成功', 'success');
@@ -3842,22 +5093,53 @@
                 return true;
             }
 
+            const ticketContext = options.ticketContext || null;
+            const confirmOptions = { ...options };
+            delete confirmOptions.ticketContext;
             const maxAttempts = CONFIG.thirdLinkMaxFillAttempts || 2;
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
+                    return false;
+                }
                 const opened = await SharedUtils.openThirdLinkElSelectDropdown(labelTexts, fieldName, (msg) => log(msg));
+                if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
+                    return false;
+                }
                 if (!opened) {
                     log(fieldName + ' \u4e0b\u62c9\u6846\u81ea\u52a8\u5c55\u5f00\u5931\u8d25\uff0c\u4fdd\u7559\u7126\u70b9\u76d1\u542c\u515c\u5e95', 'warn');
                 } else {
-                    const success = await SharedUtils.fillDropdownSearch(value, logger, 150, { preferThirdLink: true });
-                    if (success) {
-                        const applied = await SharedUtils.waitForThirdLinkFieldValue(labelTexts, value, CONFIG.thirdLinkConfirmTimeout, options);
-                        if (applied) {
-                            state[stateKey] = true;
+                    const isIterationField = stateKey === 'iterationFilled';
+                    const success = await SharedUtils.fillDropdownSearch(value, logger, 150, {
+                        preferThirdLink: true,
+                        allowSingleCandidateFallback: !isIterationField
+                    });
+                    if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
+                        return false;
+                    }
+                    const confirmTimeout = isIterationField
+                        ? Math.max(CONFIG.thirdLinkConfirmTimeout, 2600)
+                        : CONFIG.thirdLinkConfirmTimeout;
+                    const applied = await SharedUtils.confirmThirdLinkFieldApplied(labelTexts, value, confirmTimeout, confirmOptions);
+                    if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
+                        return false;
+                    }
+                    if (applied) {
+                        state[stateKey] = true;
+                        if (!success) {
+                            log(fieldName + ' 字段值已生效，按成功处理: ' + value, 'success');
+                        } else {
                             log(fieldName + ' \u81ea\u52a8\u586b\u5145\u6210\u529f: ' + value, 'success');
-                            return true;
                         }
+                        return true;
+                    }
 
-                        log(fieldName + ' \u5df2\u89e6\u53d1\u9009\u62e9\uff0c\u4f46\u5b57\u6bb5\u503c\u672a\u7a33\u5b9a\uff0c\u51c6\u5907\u91cd\u8bd5 ' + attempt + '/' + maxAttempts, 'warn');
+                    if (attempt < maxAttempts) {
+                        if (isIterationField) {
+                            const currentValue = SharedUtils.getThirdLinkFieldDisplayValue(labelTexts);
+                            log(fieldName + ' 本次尝试后仍未生效，当前字段值: ' + (currentValue || '(空)') + '，准备重试 ' + attempt + '/' + maxAttempts, 'warn');
+                        } else {
+                            log(fieldName + ' \u672c\u6b21\u5c1d\u8bd5\u540e\u4ecd\u672a\u786e\u8ba4\u751f\u6548\uff0c\u51c6\u5907\u91cd\u8bd5 ' + attempt + '/' + maxAttempts, 'warn');
+                        }
                     }
                 }
 
@@ -3866,15 +5148,38 @@
                 }
             }
 
-            log(fieldName + ' \u81ea\u52a8\u586b\u5145\u5931\u8d25\uff0c\u4fdd\u7559\u7126\u70b9\u76d1\u542c\u515c\u5e95', 'warn');
+            const currentValue = stateKey === 'iterationFilled'
+                ? SharedUtils.getThirdLinkFieldDisplayValue(labelTexts)
+                : '';
+            const failMsg = stateKey === 'iterationFilled'
+                ? fieldName + ' \u81ea\u52a8\u586b\u5145\u5931\u8d25\uff0c\u5f53\u524d\u5b57\u6bb5\u503c: ' + (currentValue || '(空)') + '\uff0c\u4fdd\u7559\u7126\u70b9\u76d1\u542c\u515c\u5e95'
+                : fieldName + ' \u81ea\u52a8\u586b\u5145\u5931\u8d25\uff0c\u4fdd\u7559\u7126\u70b9\u76d1\u542c\u515c\u5e95';
+            log(failMsg, 'warn');
             return false;
         }
 
-        async function processMCGGThirdLinkFields() {
+        async function processMCGGThirdLinkFields(options = {}) {
+            const { skipServerDependentFields = false, ticketContext = getTicketContext() } = options;
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 关联第三方自动处理')) {
+                return;
+            }
             await new Promise(resolve => setTimeout(resolve, 400));
-            await autoFillMCGGThirdLinkField(['\u521b\u5efa\u4eba', '\u521b\u5efa\u4eba*'], CONFIG.thirdLinkCreatorName, 'creatorFilled', '\u521b\u5efa\u4eba', { allowPartial: false });
-            await new Promise(resolve => setTimeout(resolve, CONFIG.thirdLinkStepGap));
-            await autoFillMCGGThirdLinkField(['\u53d1\u73b0\u8fed\u4ee3', '\u53d1\u73b0\u8fed\u4ee3*'], state.faxiandiedai, 'iterationFilled', '\u53d1\u73b0\u8fed\u4ee3', { allowPartial: false });
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 关联第三方自动处理')) {
+                return;
+            }
+            await autoFillMCGGThirdLinkField(['\u521b\u5efa\u4eba', '\u521b\u5efa\u4eba*'], CONFIG.thirdLinkCreatorName, 'creatorFilled', '\u521b\u5efa\u4eba', {
+                allowPartial: false,
+                ticketContext
+            });
+            if (!skipServerDependentFields) {
+                await new Promise(resolve => setTimeout(resolve, CONFIG.thirdLinkStepGap));
+                if (!ensureTicketContextActive(ticketContext, 'MCGG 关联第三方自动处理')) {
+                    return;
+                }
+                await autoFillMCGGThirdLinkField(['\u53d1\u73b0\u8fed\u4ee3', '\u53d1\u73b0\u8fed\u4ee3*'], state.faxiandiedai, 'iterationFilled', '\u53d1\u73b0\u8fed\u4ee3', {
+                    ticketContext
+                });
+            }
             await new Promise(resolve => setTimeout(resolve, CONFIG.thirdLinkStepGap));
 
             const desiredModule = CONFIG.thirdLinkModuleName;
@@ -3886,17 +5191,39 @@
                 log('\u529f\u80fd\u6a21\u5757\u5df2\u662f\u76ee\u6807\u503c\uff0c\u8df3\u8fc7\u81ea\u52a8\u9009\u62e9: ' + desiredModule + ' (\u5f53\u524d: ' + (currentModule || '\u7a7a') + ')', 'success');
                 state.moduleFilled = true;
             } else {
-                await autoFillMCGGThirdLinkField(['\u529f\u80fd\u6a21\u5757', '\u529f\u80fd\u6a21\u5757*'], desiredModule, 'moduleFilled', '\u529f\u80fd\u6a21\u5757');
+                if (!ensureTicketContextActive(ticketContext, 'MCGG 功能模块自动处理')) {
+                    return;
+                }
+                await autoFillMCGGThirdLinkField(['\u529f\u80fd\u6a21\u5757', '\u529f\u80fd\u6a21\u5757*'], desiredModule, 'moduleFilled', '\u529f\u80fd\u6a21\u5757', {
+                    ticketContext
+                });
             }
-            await new Promise(resolve => setTimeout(resolve, CONFIG.thirdLinkStepGap));
+            if (skipServerDependentFields) {
+                log('未识别到 ServerID，跳过 MCGG 发现迭代与渠道自动处理', 'warn');
+                markChannelDecisionStarted(ticketContext);
+                markChannelDecisionResolved(ticketContext);
+                return;
+            }
 
-            const desiredCh = state.channelText;
-            const currentCh = SharedUtils.getThirdLinkFieldDisplayValue(['\u6e20\u9053', '\u6e20\u9053*']);
-            if (desiredCh && SharedUtils.channelDisplayMatchesDesired(currentCh, desiredCh)) {
-                log('\u6e20\u9053\u5df2\u662f\u76ee\u6807\u503c\uff0c\u8df3\u8fc7\u81ea\u52a8\u9009\u62e9: ' + desiredCh + ' (\u5f53\u524d: ' + (currentCh || '\u7a7a') + ')', 'success');
-                state.channelFilled = true;
-            } else {
-                await autoFillMCGGThirdLinkField(['\u6e20\u9053', '\u6e20\u9053*'], state.channelText, 'channelFilled', '\u6e20\u9053', { channelMatch: true });
+            await new Promise(resolve => setTimeout(resolve, CONFIG.thirdLinkStepGap));
+            if (!ensureTicketContextActive(ticketContext, 'MCGG 渠道自动处理')) {
+                return;
+            }
+            markChannelDecisionStarted(ticketContext);
+            try {
+                const desiredCh = state.channelText;
+                const currentCh = SharedUtils.getThirdLinkFieldDisplayValue(['\u6e20\u9053', '\u6e20\u9053*']);
+                if (desiredCh && SharedUtils.channelDisplayMatchesDesired(currentCh, desiredCh)) {
+                    log('\u6e20\u9053\u5df2\u662f\u76ee\u6807\u503c\uff0c\u8df3\u8fc7\u81ea\u52a8\u9009\u62e9: ' + desiredCh + ' (\u5f53\u524d: ' + (currentCh || '\u7a7a') + ')', 'success');
+                    state.channelFilled = true;
+                } else {
+                    await autoFillMCGGThirdLinkField(['\u6e20\u9053', '\u6e20\u9053*'], state.channelText, 'channelFilled', '\u6e20\u9053', {
+                        channelMatch: true,
+                        ticketContext
+                    });
+                }
+            } finally {
+                markChannelDecisionResolved(ticketContext);
             }
         }
 
@@ -3913,14 +5240,15 @@
                 if (!isMCGGTitle(titleValue, { silent: true })) return;
 
                 const labelText = SharedUtils.findLabelText(target);
+                const ticketContext = getTicketContext();
                 if (labelText.includes('渠道')) {
-                    await handleMCGGChannelFocus();
+                    await handleMCGGChannelFocus(ticketContext);
                 } else if (labelText.includes('创建人')) {
-                    await handleMCGGCreatorFocus();
+                    await handleMCGGCreatorFocus(ticketContext);
                 } else if (labelText.includes('发现迭代')) {
-                    await handleMCGGIterationFocus();
+                    await handleMCGGIterationFocus(ticketContext);
                 } else if (labelText.includes('功能模块')) {
-                    await handleMCGGModuleFocus();
+                    await handleMCGGModuleFocus(ticketContext);
                 }
             };
 

@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         飞书项目工具集 (状态栏版) 2.1.11
+// @name         飞书项目工具集 (状态栏版) 2.1.20
 // @namespace    http://tampermonkey.net/
-// @version      2.1.11
+// @version      2.1.20
 // @description  合并多个飞书项目相关工具脚本，使用状态栏UI设计。新增自动评论功能（已联系/未回复）。打开链接功能支持Alt+Q快捷键。
 // @match        https://project.feishu.cn/*
 // @match        https://project.feishu.cn/ml/onlineissue*
@@ -17,6 +17,30 @@
 
 /**
  * 更新日志：
+ * v2.1.20
+ * - 修复：搜索框成功判定改为校验“按钮展开状态变化”或“出现新的搜索输入框实例”，避免页面原本已存在输入框时被误判为点击成功。
+ * - 修复：日志中的“点击成功”必须建立在点击前后状态真实变化的前提上，进一步消除搜索框假激活提示。
+ * v2.1.19
+ * - 修复：撤销搜索框功能对抽屉容器的错误限定，改回按参考脚本在主页面全局查找 `#story-view-search-container` 与“查找”按钮，适配“抽屉打开但搜索入口仍在抽屉外”的实际页面结构。
+ * - 修复：搜索框激活日志不再输出抽屉优先路径，避免把评论模块的抽屉经验误套到飞书搜索入口。
+ * v2.1.18
+ * - 修复：抽屉状态下移除搜索按钮和搜索输入框对 `document` 的全局回退，严格限定在当前搜索根内查找，避免误把背景页元素识别为抽屉内目标而产生假成功日志。
+ * - 修复：抽屉场景下按钮点击后的展开判断改为同一搜索根内校验，和飞书 skills 的“限定范围后逐层验证”方式保持一致。
+ * v2.1.17
+ * - 修复：飞书页面弹出抽屉时，搜索框激活逻辑优先限定在 `.meego-drawer-content-wrapper` 内查找，避免误命中背景页的同名“查找”按钮导致前台无反应。
+ * - 优化：搜索容器、查找按钮、搜索输入框统一走“抽屉优先，否则全局”的定位方式，对齐飞书项目 skills 中的 SPA 抽屉处理经验。
+ * v2.1.16
+ * - 修复：搜索框点击逻辑进一步对齐参考脚本，优先直接调用查找按钮原生 `click()`，仅在未展开时再做一次外层触发补救，避免自定义事件链干扰飞书按钮响应。
+ * - 修复：搜索框激活前增加按钮就绪等待与点击后短暂缓冲，减少按钮已渲染但交互尚未挂载时的空点击问题。
+ * v2.1.15
+ * - 修复：搜索框激活成功条件改为“查找按钮已展开(aria-expanded=true)或对应搜索输入框出现且聚焦成功”，避免误匹配其他输入框导致假成功日志。
+ * - 修复：搜索点击目标固定优先命中 #story-view-search-filter，并补充 pointer/mouse 原生事件链，确保用户视角可见“查找”被真实触发。
+ * v2.1.14
+ * - 修复：搜索框激活逻辑改为直接复用参考脚本的飞书搜索点击链路，按“等待容器 -> 查找按钮 -> 原生 click -> 等待输入框”的顺序执行。
+ * v2.1.13
+ * - 修复：针对新的飞书查找按钮结构优先使用 `#story-view-search-filter`、`PointerEvent` 等组合完成点击，并且只有输入框真正激活并聚焦后才记录成功。
+ * v2.1.12
+ * - 增强：状态栏新增“搜索框”入口，支持展开飞书查找按钮并高亮命中位置，日志同步提示。
  * v2.1.11
  * - 优化：“已联系”检索功能也支持了连续点击查找下一个匹配项的功能，并会按预设关键词数组的顺序依次查找展示。
  * 
@@ -49,6 +73,26 @@
             LOG_PANEL_POSITION: 'feishu_tools_log_panel_position',
             LOG_PANEL_SIZE: 'feishu_tools_log_panel_size'
         },
+        SEARCH_BOX: {
+            CONTAINER_SELECTORS: [
+                '#story-view-search-container',
+                '[id*="search-container"]'
+            ],
+            BUTTON_SELECTORS: [
+                '#story-view-search-filter',
+                '#story-view-search-container button',
+                '#story-view-search-container [tabindex="0"]'
+            ],
+            INPUT_SELECTORS: [
+                '#story-view-search-container input',
+                'input[placeholder="按标题查找"]',
+                'input[placeholder*="按标题"]',
+                'input[placeholder*="标题"]',
+                '[id*="story-view-search"] input'
+            ],
+            WAIT_TIMEOUT: 5000,
+            CLICK_WAIT: 150
+        },
         AUTO_COMMENT: {
             RETRY_MAX: 10,
             RETRY_INTERVAL: 300,
@@ -79,6 +123,7 @@
     const moduleStates = {
         searchKeyword: { isProcessing: false },
         searchAt: { isProcessing: false },
+        searchBox: { isProcessing: false },
         infoExtractor: { isProcessing: false },
         listExtractor: { isProcessing: false },
         smartLink: { isProcessing: false, processId: 0 },
@@ -100,10 +145,10 @@
             /* 图标容器 - 8区域布局 (2列×4行 或 根据需要调整) */
             .ai-status-icon {
                 width: 60px;
-                height: 105px;
+                height: 130px;
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                grid-template-rows: 1fr 1fr 1fr 1fr;
+                grid-template-rows: repeat(5, 1fr);
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 border-radius: 12px;
                 box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
@@ -1213,6 +1258,317 @@
     }
 
     // 自动评论功能模块
+    const searchBoxLogger = createLogChannel('searchbox');
+
+    function findVisibleSearchContainer(searchRoot = null) {
+        const root = searchRoot || document;
+        for (const selector of CONFIG.SEARCH_BOX.CONTAINER_SELECTORS) {
+            const container = root.querySelector(selector);
+            if (container && isElementVisible(container)) {
+                return container;
+            }
+        }
+        return null;
+    }
+
+    function findFeishuSearchButton(searchContainer = null, searchRoot = null) {
+        const root = searchRoot || document;
+        const exactButton = root.querySelector('#story-view-search-filter');
+        if (exactButton && isElementVisible(exactButton)) return exactButton;
+
+        for (const selector of CONFIG.SEARCH_BOX.BUTTON_SELECTORS) {
+            const scopedSelector = selector.replace('#story-view-search-container ', '');
+            const button = searchContainer ? searchContainer.querySelector(scopedSelector) : root.querySelector(selector);
+            if (button && isElementVisible(button)) return button;
+        }
+
+        if (searchContainer) {
+            const button = searchContainer.querySelector('button');
+            if (button && isElementVisible(button)) return button;
+        }
+
+        const allButtons = root.querySelectorAll('button');
+        for (const button of allButtons) {
+            if (button.innerText && button.innerText.trim() === '查找' && isElementVisible(button)) {
+                return button;
+            }
+        }
+
+        const allSpans = root.querySelectorAll('.semi-button-content-right span, .semi-button-content span');
+        for (const span of allSpans) {
+            if (span.innerText && span.innerText.trim() === '查找') {
+                const button = span.closest('button');
+                if (button && isElementVisible(button)) return button;
+            }
+        }
+
+        return null;
+    }
+
+    function getSearchTriggerWrapper(searchButton) {
+        if (!searchButton) return null;
+        const wrapper = searchButton.closest('[aria-haspopup="dialog"]');
+        if (wrapper) return wrapper;
+        if (searchButton.parentElement && searchButton.parentElement.getAttribute('aria-haspopup') === 'dialog') {
+            return searchButton.parentElement;
+        }
+        return null;
+    }
+
+    function isSearchTriggerExpanded(searchButton) {
+        const wrapper = getSearchTriggerWrapper(searchButton);
+        if (!wrapper) return false;
+        return wrapper.getAttribute('aria-expanded') === 'true';
+    }
+
+    function getVisibleSearchInput(searchButton = null, searchRoot = null) {
+        const root = searchRoot || document;
+        const searchContainer = root.querySelector('#story-view-search-container');
+        if (searchContainer) {
+            const containerInput = searchContainer.querySelector('input');
+            if (containerInput && isElementVisible(containerInput)) {
+                return containerInput;
+            }
+        }
+
+        const wrapper = getSearchTriggerWrapper(searchButton);
+        if (wrapper) {
+            const popupId = wrapper.getAttribute('aria-controls') || searchButton?.getAttribute('aria-controls');
+            if (popupId) {
+                const popup = document.getElementById(popupId);
+                if (popup) {
+                    const popupInput = popup.querySelector('input');
+                    if (popupInput && isElementVisible(popupInput)) {
+                        return popupInput;
+                    }
+                }
+            }
+        }
+
+        for (const selector of CONFIG.SEARCH_BOX.INPUT_SELECTORS) {
+            const inputs = root.querySelectorAll(selector);
+            for (const input of inputs) {
+                if (input && isElementVisible(input)) {
+                    return input;
+                }
+            }
+        }
+        return null;
+    }
+
+    function hasSearchStateChanged(searchButton, searchRoot, stateBefore = {}) {
+        const expandedNow = isSearchTriggerExpanded(searchButton);
+        const currentInput = getVisibleSearchInput(searchButton, searchRoot);
+
+        if (!stateBefore.expanded && expandedNow) {
+            return true;
+        }
+
+        if (!stateBefore.input && currentInput) {
+            return true;
+        }
+
+        if (stateBefore.input && currentInput && stateBefore.input !== currentInput) {
+            return true;
+        }
+
+        return false;
+    }
+
+    function waitForElement(selector, timeout = CONFIG.SEARCH_BOX.WAIT_TIMEOUT, searchRoot = null) {
+        return new Promise(resolve => {
+            const startTime = Date.now();
+            const check = () => {
+                const root = searchRoot || document;
+                const el = root.querySelector(selector);
+                if (el && isElementVisible(el)) {
+                    resolve(el);
+                    return;
+                }
+                if (Date.now() - startTime >= timeout) {
+                    resolve(null);
+                    return;
+                }
+                setTimeout(check, 100);
+            };
+            check();
+        });
+    }
+
+    function waitForCondition(checkFn, timeout = CONFIG.SEARCH_BOX.WAIT_TIMEOUT, interval = 100) {
+        return new Promise(resolve => {
+            const startTime = Date.now();
+            const check = () => {
+                let result = false;
+                try {
+                    result = checkFn();
+                } catch (e) {
+                    result = false;
+                }
+
+                if (result) {
+                    resolve(result);
+                    return;
+                }
+
+                if (Date.now() - startTime >= timeout) {
+                    resolve(null);
+                    return;
+                }
+
+                setTimeout(check, interval);
+            };
+            check();
+        });
+    }
+
+    async function triggerNativeClick(target) {
+        if (!target) return;
+
+        const hasPointerEvent = typeof PointerEvent === 'function';
+        if (hasPointerEvent) {
+            target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, button: 0, buttons: 1 }));
+        }
+        target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 }));
+        if (hasPointerEvent) {
+            target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, button: 0, buttons: 0 }));
+        }
+        target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, buttons: 0 }));
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, buttons: 0 }));
+
+        if (typeof target.click === 'function') {
+            target.click();
+        }
+
+        await sleep(CONFIG.SEARCH_BOX.CLICK_WAIT);
+    }
+
+    async function clickFeishuSearchButtonLikeReference(searchButton, triggerWrapper = null, searchRoot = null, stateBefore = {}) {
+        if (!searchButton) return false;
+
+        searchButton.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'nearest'
+        });
+        await sleep(120);
+
+        if (typeof searchButton.focus === 'function') {
+            searchButton.focus();
+        }
+
+        searchButton.click();
+        await sleep(220);
+
+        if (hasSearchStateChanged(searchButton, searchRoot, stateBefore)) {
+            return true;
+        }
+
+        if (triggerWrapper && typeof triggerWrapper.click === 'function') {
+            triggerWrapper.click();
+            await sleep(220);
+        }
+
+        if (hasSearchStateChanged(searchButton, searchRoot, stateBefore)) {
+            return true;
+        }
+
+        searchButton.click();
+        await sleep(220);
+
+        return hasSearchStateChanged(searchButton, searchRoot, stateBefore);
+    }
+
+    async function focusFeishuSearchBox() {
+        if (moduleStates.searchBox.isProcessing) {
+            searchBoxLogger.warn('搜索框激活正在进行中，请稍后再试');
+            return;
+        }
+
+        moduleStates.searchBox.isProcessing = true;
+        showZoneProcessing('focus-search', true);
+        searchBoxLogger.log('开始激活飞书项目搜索框');
+
+        try {
+            const searchRoot = document;
+
+            searchBoxLogger.log('等待查找按钮所在容器出现...');
+            const searchContainer = await waitForElement('#story-view-search-container, [id*="search-container"]', CONFIG.SEARCH_BOX.WAIT_TIMEOUT, searchRoot);
+
+            const searchButton = findFeishuSearchButton(searchContainer, searchRoot);
+            if (!searchButton) {
+                searchBoxLogger.error('未找到查找按钮，请确认飞书页面已正常加载');
+                return;
+            }
+
+            const triggerWrapper = getSearchTriggerWrapper(searchButton);
+            const inputBeforeClick = getVisibleSearchInput(searchButton, searchRoot);
+            const alreadyExpanded = isSearchTriggerExpanded(searchButton);
+            const stateBeforeClick = {
+                expanded: alreadyExpanded,
+                input: inputBeforeClick
+            };
+
+            if (!alreadyExpanded && !inputBeforeClick) {
+                searchBoxLogger.log('等待查找按钮进入可点击状态...');
+                await sleep(250);
+                searchBoxLogger.log('找到查找按钮，模拟点击展开搜索框...');
+                const clicked = await clickFeishuSearchButtonLikeReference(searchButton, triggerWrapper, searchRoot, stateBeforeClick);
+                if (!clicked) {
+                    searchBoxLogger.error('查找按钮点击后未展开，请稍后重试');
+                    return;
+                }
+            } else {
+                searchBoxLogger.log('查找入口已展开，跳过重复点击');
+            }
+
+            searchBoxLogger.log('等待搜索输入框出现...');
+            const activated = await waitForCondition(() => {
+                return hasSearchStateChanged(searchButton, searchRoot, stateBeforeClick) || isSearchTriggerExpanded(searchButton);
+            }, CONFIG.SEARCH_BOX.WAIT_TIMEOUT, 100);
+            if (!activated) {
+                searchBoxLogger.error('查找按钮点击后未展开，请稍后重试');
+                return;
+            }
+
+            const searchInput = await waitForCondition(() => getVisibleSearchInput(searchButton, searchRoot), CONFIG.SEARCH_BOX.WAIT_TIMEOUT, 100);
+            if (!searchInput) {
+                searchBoxLogger.error('搜索输入框未出现，请稍后重试');
+                return;
+            }
+
+            if (inputBeforeClick && searchInput === inputBeforeClick && !isSearchTriggerExpanded(searchButton)) {
+                searchBoxLogger.error('搜索输入框未发生变化，请稍后重试');
+                return;
+            }
+
+            searchInput.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'nearest'
+            });
+            searchInput.focus();
+            searchInput.click();
+            if (document.activeElement !== searchInput) {
+                await triggerNativeClick(searchInput);
+                searchInput.focus();
+            }
+
+            if (document.activeElement !== searchInput) {
+                searchBoxLogger.error('搜索输入框已出现但未聚焦，请手动点击输入框');
+                return;
+            }
+
+            searchBoxLogger.success('飞书项目搜索框已激活，可直接输入');
+            showZoneSuccess('focus-search');
+        } catch (error) {
+            searchBoxLogger.error('激活搜索框失败: ' + error.message);
+        } finally {
+            moduleStates.searchBox.isProcessing = false;
+            showZoneProcessing('focus-search', false);
+        }
+    }
+
     const autoCommentLogger = createLogChannel('comment');
 
     async function handleAutoComment(commentType) {
@@ -1446,6 +1802,7 @@
                 <span id="ai-log-panel-close">×</span>
             </div>
             <div id="ai-log-panel-actions">
+                <button class="ai-action-btn btn-search-box" data-action="focus-search">🔎 搜索框</button>
                 <button class="ai-action-btn btn-search" data-action="search">🔍 已联系</button>
                 <button class="ai-action-btn btn-at" data-action="search-at">@ 找@</button>
                 <button class="ai-action-btn btn-info" data-action="extract-info">📋 信息提取</button>
@@ -1480,6 +1837,9 @@
             btn.addEventListener('click', () => {
                 const action = btn.dataset.action;
                 switch (action) {
+                    case 'focus-search':
+                        focusFeishuSearchBox();
+                        break;
                     case 'search':
                         searchKeywords();
                         break;
@@ -1694,6 +2054,7 @@
         iconContainer.className = 'ai-status-icon';
 
         const zones = [
+            { name: 'focus-search', text: '🔎', title: '搜索框', desc: '展开并聚焦飞书项目搜索框' },
             { name: 'search', text: '🔍', title: '已联系', desc: '在页面中搜索联系记录' },
             { name: 'search-at', text: '@', title: '找@', desc: '寻找@或者评论' },
             { name: 'extract-info', text: '📋', title: '信息提取', desc: '提取项目信息到剪贴板' },
@@ -1773,6 +2134,9 @@
 
             const zoneName = zone.dataset.zone;
             switch (zoneName) {
+                case 'focus-search':
+                    focusFeishuSearchBox();
+                    break;
                 case 'search':
                     searchKeywords();
                     break;
@@ -1858,6 +2222,7 @@
         injectStyles();
         createStatusBar();
         bindKeyboardShortcut();
+        addLogToPanel('🔎 搜索框 - 展开并聚焦飞书项目搜索输入框', 'info', 'searchbox');
         addLogToPanel('飞书工具集初始化完成', 'success', '');
         addLogToPanel('使用说明：', 'info', '');
         addLogToPanel('🔍 已联系 - 检索页面中的联系记录关键词', 'info', 'search');

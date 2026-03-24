@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AIHelp工单批量筛选与处理工具
 // @namespace    http://tampermonkey.net/
-// @version      3.5.3
+// @version      3.6.0
 // @description  AIHelp工单批量筛选与批量处理工具，提供一键快捷操作，新增BUG自动解决功能，全面优化点击速度
 // @author       ll96victor
 // @match        https://ml-panel.aihelp.net/dashboard/*
@@ -14,6 +14,13 @@
     'use strict';
 
     /**
+     * 3.6.0 鏇存柊璇存槑锛?
+     * 1. 灏嗘偓娴皬鍥炬爣鐐瑰嚮鍚庣殑灞曞紑闈㈡澘鏀逛负鈥滄寜閽尯 + 鏃ュ織鍖衡€濅竴浣撳睍绀猴紝灞曞紑鏃堕殣钘忓皬鍥炬爣
+     * 2. 缁熶竴闈㈡澘缁х画鏀寔鎷栧姩鍜岃皟鏁村ぇ灏忥紝鏃ュ織淇℃伅涓嶅啀闇€瑕侀澶栫偣鍑绘墠鑳界湅鍒?
+     * 3. 鍒犻櫎鈥滅瓫閫塀UG鈥濆崟鐙叆鍙ｏ紝淇濈暀鈥淏J鈥濊嚜鍔ㄨВ鍐冲叆鍙?
+     * 4. 鏂板鈥滄壒閲忚涓哄凡瑙ｅ喅骞跺彂宸茬煡閭欢鈥濓紝閭欢閫夐」鎸?8 Noticed.mail" 鍞竴鍖归厤
+     * 5. 鎵归噺鍒嗛厤鍜屾壒閲忚В鍐虫敼涓衡€滅瓑鍏冪礌灏辩华缁€濓紝鍑忓皯鍥哄畾闀跨瓑寰呭甫鏉ョ殑鎱㈤€熸劅
+     *
      * 3.5.3 更新说明：
      *
      * 【Bug修复】
@@ -212,7 +219,7 @@
         maxLogLines: 100,
         logCleanupInterval: 60000,
         tipDelay: 3000,
-        defaultLogPanelSize: { width: 320, height: 350 },
+        defaultLogPanelSize: { width: 360, height: 420 },
         minLogPanelSize: { width: 250, height: 180 }
     };
 
@@ -242,6 +249,14 @@
     };
 
     // ==================== 全局状态锁 ====================
+    const RESOLVE_WITH_KNOWN_MAIL_CONFIG = {
+        status: '\u5df2\u89e3\u51b3',
+        reward: '8 Noticed.mail',
+        name: 'KM',
+        displayName: '\u5df2\u89e3\u51b3\u5e76\u53d1\u5df2\u77e5\u90ae\u4ef6',
+        logModule: 'resolve-mail'
+    };
+
     class ScriptState {
         constructor() { this.isProcessing = false; }
         reset() { this.isProcessing = false; }
@@ -509,7 +524,228 @@
             throw new Error(`Element with text "${text}" not found`);
         },
 
+
+        setNativeInputValue(input, value) {
+            if (!input) return false;
+
+            const prototype = input.tagName === 'TEXTAREA'
+                ? window.HTMLTextAreaElement.prototype
+                : window.HTMLInputElement.prototype;
+            const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+            if (!descriptor || typeof descriptor.set !== 'function') {
+                return false;
+            }
+
+            descriptor.set.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+        },
+
+        findFormInputByLabel(labelText, options = {}) {
+            const { fallbackSelector = '' } = options;
+            const normalizedLabel = (labelText || '').trim();
+
+            for (const item of document.querySelectorAll('.el-form-item')) {
+                const labelEl = item.querySelector('.el-form-item__label');
+                if (!labelEl || !(labelEl.textContent || '').includes(normalizedLabel)) {
+                    continue;
+                }
+
+                const input = item.querySelector('input');
+                if (input && this.isElementAvailable(input)) {
+                    return input;
+                }
+            }
+
+            return fallbackSelector ? this.fastFindElement(fallbackSelector) : null;
+        },
+
+        async waitForCondition(getter, options = {}) {
+            const { timeout = 2000, interval = 50 } = options;
+            const startTime = Date.now();
+
+            while (Date.now() - startTime < timeout) {
+                const result = getter();
+                if (result) {
+                    return result;
+                }
+                await this.sleep(interval);
+            }
+
+            return null;
+        },
+
+        findNearestVisibleSearchInput(anchorInput) {
+            if (!anchorInput) return null;
+
+            const anchorRect = anchorInput.getBoundingClientRect();
+            let nearest = null;
+            let minDistance = Infinity;
+
+            for (const input of document.querySelectorAll('input[placeholder="\u641c\u7d22"]')) {
+                if (!this.isElementAvailable(input)) continue;
+                const rect = input.getBoundingClientRect();
+                const distance = Math.abs(rect.top - anchorRect.top) + Math.abs(rect.left - anchorRect.left);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearest = input;
+                }
+            }
+
+            return nearest;
+        },
+
+        async waitForNearestVisibleSearchInput(anchorInput, timeout = 2000) {
+            return this.waitForCondition(() => this.findNearestVisibleSearchInput(anchorInput), { timeout });
+        },
+
+        async openDropdownAndGetSearchInput(anchorInput, logger = null, timeout = 2000) {
+            if (!anchorInput) {
+                throw new Error('Dropdown input not found');
+            }
+
+            anchorInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await this.sleep(80);
+            anchorInput.focus();
+
+            const rect = anchorInput.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            ['mousedown', 'mouseup', 'click'].forEach(type => {
+                anchorInput.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window,
+                    clientX: cx,
+                    clientY: cy,
+                    button: 0
+                }));
+            });
+
+            const searchInput = await this.waitForNearestVisibleSearchInput(anchorInput, timeout);
+            if (!searchInput) {
+                if (logger) logger.error('Search input not found');
+                throw new Error('Search input not found');
+            }
+
+            return searchInput;
+        },
+
+        findNearestVisibleOption(optionText, anchorInput, options = {}) {
+            const {
+                selectors = ['li', 'span'],
+                exactFirst = true
+            } = options;
+            const normalizedTarget = (optionText || '').trim();
+            const anchorRect = anchorInput
+                ? anchorInput.getBoundingClientRect()
+                : { top: 0, left: 0 };
+            const candidates = [];
+
+            selectors.forEach(selector => {
+                document.querySelectorAll(selector).forEach(el => {
+                    if (!this.isElementAvailable(el)) return;
+                    const text = (el.textContent || '').trim();
+                    if (!text) return;
+                    if (text === normalizedTarget || text.includes(normalizedTarget)) {
+                        const rect = el.getBoundingClientRect();
+                        const distance = Math.abs(rect.top - anchorRect.top) + Math.abs(rect.left - anchorRect.left);
+                        candidates.push({ el, exact: text === normalizedTarget, distance });
+                    }
+                });
+            });
+
+            if (candidates.length === 0) return null;
+
+            candidates.sort((a, b) => {
+                if (exactFirst && a.exact !== b.exact) {
+                    return a.exact ? -1 : 1;
+                }
+                return a.distance - b.distance;
+            });
+
+            return candidates[0].el;
+        },
+
+        async waitForNearestVisibleOption(optionText, anchorInput, options = {}) {
+            const { timeout = 2000 } = options;
+            return this.waitForCondition(
+                () => this.findNearestVisibleOption(optionText, anchorInput, options),
+                { timeout }
+            );
+        },
+
+        async selectDropdownOption(anchorInput, searchText, optionText, logger = null, options = {}) {
+            const {
+                optionSelectors = ['li'],
+                searchTimeout = 2000,
+                optionTimeout = 2000
+            } = options;
+
+            const searchInput = await this.openDropdownAndGetSearchInput(anchorInput, logger, searchTimeout);
+            searchInput.focus();
+            await this.sleep(80);
+
+            if (!this.setNativeInputValue(searchInput, searchText)) {
+                throw new Error('Search input write failed');
+            }
+
+            const option = await this.waitForNearestVisibleOption(optionText || searchText, searchInput, {
+                selectors: optionSelectors,
+                timeout: optionTimeout,
+                exactFirst: true
+            });
+
+            if (!option) {
+                if (logger) logger.error(`Option not found: ${optionText || searchText}`);
+                throw new Error(`Option not found: ${optionText || searchText}`);
+            }
+
+            option.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await this.fastClick(option, { fastDelay: 80, fallbackDelay: 200, logger });
+            return option;
+        },
+
+        findSubmitButton(buttonTexts = ['\u63d0\u4ea4', '\u786e\u8ba4']) {
+            const groups = [
+                '.el-popover button',
+                '.el-message-box button',
+                '.el-dialog__wrapper button',
+                '.el-dialog button',
+                'button'
+            ];
+
+            for (const selector of groups) {
+                for (const btn of document.querySelectorAll(selector)) {
+                    if (!this.isElementAvailable(btn)) continue;
+                    const text = (btn.textContent || '').trim();
+                    if (buttonTexts.includes(text)) {
+                        return btn;
+                    }
+                }
+            }
+
+            return null;
+        },
+
+        async clickSubmitButton(logger = null, buttonTexts = ['\u63d0\u4ea4', '\u786e\u8ba4']) {
+            const submitBtn = await this.waitForCondition(
+                () => this.findSubmitButton(buttonTexts),
+                { timeout: 2000 }
+            );
+            if (!submitBtn) {
+                if (logger) logger.error('Submit button not found');
+                throw new Error('Submit button not found');
+            }
+
+            submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await this.fastClick(submitBtn, { fastDelay: 80, fallbackDelay: 200, logger });
+            return submitBtn;
+        },
+
         waitForAll(selector, timeout = 5000) {
+
             return new Promise((resolve, reject) => {
                 console.log(`[AIHelp工单工具] waitForAll: 查找选择器 "${selector}"`);
 
@@ -2142,14 +2378,129 @@
         }
     };
 
+    async function openBatchEditAndFindField(labelText, logger, options = {}) {
+        const { fallbackSelector = '' } = options;
+
+        try {
+            await ToolUtil.clickByText(['button', 'span'], '\u7f16\u8f91');
+        } catch (e) {
+            if (logger) logger.error('\u672a\u627e\u5230\u7f16\u8f91\u6309\u94ae\uff0c\u8bf7\u5148\u52fe\u9009\u5de5\u5355');
+            throw new Error('\u672a\u627e\u5230\u7f16\u8f91\u6309\u94ae\uff0c\u8bf7\u5148\u52fe\u9009\u5de5\u5355');
+        }
+
+        const fieldInput = await ToolUtil.waitForCondition(
+            () => ToolUtil.findFormInputByLabel(labelText, { fallbackSelector }),
+            { timeout: 2200 }
+        );
+        if (!fieldInput) {
+            if (logger) logger.error(`\u672a\u627e\u5230\u5b57\u6bb5\uff1a${labelText}`);
+            throw new Error(`\u672a\u627e\u5230\u5b57\u6bb5\uff1a${labelText}`);
+        }
+
+        return fieldInput;
+    }
+
+    async function fillBatchFieldByLabel(labelText, searchText, optionText, logger, options = {}) {
+        const { fallbackSelector = '', optionSelectors = ['li'] } = options;
+        const fieldInput = ToolUtil.findFormInputByLabel(labelText, { fallbackSelector });
+        if (!fieldInput) {
+            if (logger) logger.error(`\u672a\u627e\u5230\u5b57\u6bb5\uff1a${labelText}`);
+            throw new Error(`\u672a\u627e\u5230\u5b57\u6bb5\uff1a${labelText}`);
+        }
+
+        await ToolUtil.selectDropdownOption(fieldInput, searchText, optionText, logger, { optionSelectors });
+        return fieldInput;
+    }
+
+    function createAssignAction(assigneeKey) {
+        const config = ASSIGNEE_CONFIG[assigneeKey];
+        if (!config) {
+            throw new Error(`Unknown assignee: ${assigneeKey}`);
+        }
+
+        return {
+            name: `\u5206\u914d\u7ed9${config.name}`,
+            icon: config.name,
+            shortTip: `\u5206\u914d\u7ed9${config.displayName}`,
+            detailTip: `\u5c06\u9009\u4e2d\u5de5\u5355\u6279\u91cf\u5206\u914d\u7ed9${config.displayName}`,
+            assigneeId: config.id,
+            async execute() {
+                const logger = createLogChannel('\u53d7\u7406\u4eba');
+                logger.log(`\u5f00\u59cb\u6279\u91cf\u5206\u914d\u7ed9 ${config.displayName}`);
+
+                const assigneeInput = await openBatchEditAndFindField('\u5de5\u5355\u53d7\u7406\u4eba', logger);
+                await ToolUtil.selectDropdownOption(assigneeInput, config.id, config.id, logger, {
+                    optionSelectors: ['li']
+                });
+                await ToolUtil.clickSubmitButton(logger, ['\u63d0\u4ea4', '\u786e\u8ba4']);
+
+                logger.success(`\u6279\u91cf\u5206\u914d\u7ed9${config.displayName}\u5b8c\u6210`);
+                return { success: true, message: `\u6279\u91cf\u5206\u914d\u7ed9${config.displayName}\u5b8c\u6210` };
+            }
+        };
+    }
+
+    function createResolveAction() {
+        const statusText = '\u5df2\u89e3\u51b3';
+
+        return {
+            name: '\u6279\u91cf\u89e3\u51b3',
+            icon: '\u89e3',
+            shortTip: '\u6279\u91cf\u8bbe\u4e3a\u5df2\u89e3\u51b3',
+            detailTip: '\u5c06\u9009\u4e2d\u5de5\u5355\u72b6\u6001\u6279\u91cf\u6539\u4e3a\u5df2\u89e3\u51b3',
+            async execute() {
+                const logger = createLogChannel('\u5de5\u5355\u5df2\u89e3\u51b3');
+                logger.log('\u5f00\u59cb\u6279\u91cf\u8bbe\u7f6e\u5de5\u5355\u72b6\u6001\u4e3a\u5df2\u89e3\u51b3');
+
+                const statusInput = await openBatchEditAndFindField('\u5de5\u5355\u72b6\u6001', logger);
+                await ToolUtil.selectDropdownOption(statusInput, statusText, statusText, logger, {
+                    optionSelectors: ['li']
+                });
+                await ToolUtil.clickSubmitButton(logger, ['\u63d0\u4ea4', '\u786e\u8ba4']);
+
+                logger.success('\u6279\u91cf\u89e3\u51b3\u5b8c\u6210');
+                return { success: true, message: '\u6279\u91cf\u89e3\u51b3\u5b8c\u6210' };
+            }
+        };
+    }
+
+    function createResolveWithKnownMailAction() {
+        const statusText = '\u5df2\u89e3\u51b3';
+        const knownMailText = '8 Noticed.mail';
+
+        return {
+            name: '\u6279\u91cf\u5df2\u89e3\u51b3\u5e76\u53d1\u5df2\u77e5\u90ae\u4ef6',
+            icon: 'KM',
+            shortTip: '\u6279\u91cf\u8bbe\u4e3a\u5df2\u89e3\u51b3\u5e76\u53d1\u5df2\u77e5\u90ae\u4ef6',
+            detailTip: '\u5c06\u9009\u4e2d\u5de5\u5355\u6279\u91cf\u8bbe\u4e3a\u5df2\u89e3\u51b3\uff0c\u5e76\u53d1\u9001 8 Noticed.mail',
+            async execute() {
+                const logger = createLogChannel('resolve-mail');
+                logger.log('\u5f00\u59cb\u6279\u91cf\u8bbe\u4e3a\u5df2\u89e3\u51b3\u5e76\u53d1\u5df2\u77e5\u90ae\u4ef6');
+
+                const statusInput = await openBatchEditAndFindField('\u5de5\u5355\u72b6\u6001', logger);
+                await ToolUtil.selectDropdownOption(statusInput, statusText, statusText, logger, {
+                    optionSelectors: ['li']
+                });
+                await fillBatchFieldByLabel('\u53d1\u9001\u5956\u52b1', knownMailText, knownMailText, logger, {
+                    fallbackSelector: 'input[placeholder="\u8bf7\u9009\u62e9"]',
+                    optionSelectors: ['li', 'span']
+                });
+                await ToolUtil.clickSubmitButton(logger, ['\u63d0\u4ea4', '\u786e\u8ba4']);
+
+                logger.success('\u6279\u91cf\u5df2\u89e3\u51b3\u5e76\u53d1\u5df2\u77e5\u90ae\u4ef6\u5b8c\u6210');
+                return { success: true, message: '\u6279\u91cf\u5df2\u89e3\u51b3\u5e76\u53d1\u5df2\u77e5\u90ae\u4ef6\u5b8c\u6210' };
+            }
+        };
+    }
+
     const ActionLog = {
-        name: '日志',
-        icon: '📋',
-        shortTip: '查看操作日志',
-        detailTip: '显示所有筛选和批量操作的执行记录'
+        name: 'Log',
+        icon: 'LG',
+        shortTip: 'Log',
+        detailTip: 'Log'
     };
 
-    // ==================== 批量分配按钮 ====================
+    // ==================== ????????? ====================
     const ActionL = createAssignAction('L');
     const ActionN = createAssignAction('N');
     const ActionW = createAssignAction('W');
@@ -2157,6 +2508,7 @@
 
     // ==================== 批量解决按钮 ====================
     const ActionResolve = createResolveAction();
+    const ActionResolveWithKnownMail = createResolveWithKnownMailAction();
 
     // ==================== BUG自动解决按钮 ====================
     const ActionAutoResolve = createAutoResolveAction();
@@ -2166,8 +2518,7 @@
     // 位置1: BJ, 位置2: 🐛, 位置3: 📝, 位置4: 📄
     // 位置5: 🗑️, 位置6: ⚡, 位置7: 📋, 位置8: L
     // 位置9: N, 位置10: W, 位置11: X, 位置12: 解
-    const actions = [ActionAutoResolve, ActionA, ActionB, ActionC, ActionD, ActionE, ActionLog, ActionL, ActionN, ActionW, ActionX, ActionResolve];
-    const LOG_ACTION_INDEX = 6;
+    const actions = [ActionAutoResolve, ActionB, ActionC, ActionD, ActionE, ActionL, ActionN, ActionW, ActionX, ActionResolve, ActionResolveWithKnownMail];
 
     // ==================== 提示管理 ====================
     const TipManager = {
@@ -2440,8 +2791,8 @@
 
             #${LOG_PANEL_ID} {
                 position: fixed;
-                width: 320px;
-                height: 350px;
+                width: 360px;
+                height: 420px;
                 min-width: 250px;
                 min-height: 180px;
                 background: rgba(255, 255, 255, 0.98);
@@ -2497,6 +2848,23 @@
 
             #${LOG_PANEL_ID} .log-header .close-btn:hover {
                 color: #333;
+            }
+
+            #${LOG_PANEL_ID} .tool-actions {
+                padding: 10px 12px 0;
+                flex-shrink: 0;
+            }
+
+            #${LOG_PANEL_ID} .tool-actions .aihelp-zone-grid {
+                width: 100%;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+
+            #${LOG_PANEL_ID} .tool-actions .aihelp-zone-btn {
+                width: auto;
+                min-height: 36px;
+                font-size: 13px;
+                border-radius: 8px;
             }
 
             #${LOG_PANEL_ID} .log-content {
@@ -2557,6 +2925,7 @@
             .ai-log-module-filter { color: #3370ff; font-weight: 600; }
             .ai-log-module-batch { color: #722ed1; font-weight: 600; }
             .ai-log-module-system { color: #f5a623; font-weight: 600; }
+            .ai-log-module-resolve-mail { color: #fa8c16; font-weight: 600; }
             .ai-log-module-受理人 { color: #13c2c2; font-weight: 600; }
             .ai-log-module-工单已解决 { color: #52c41a; font-weight: 600; }
             .ai-log-module-AI识别为BUG自动解决 { color: #eb2f96; font-weight: 600; }
@@ -2938,6 +3307,297 @@
     }
 
     // ==================== 路由变化监听 ====================
+    function executeToolbarAction(action) {
+        return scriptState.withLock(async () => {
+            try {
+                const result = await action.execute();
+                addLog(action.name, result);
+                return result;
+            } catch (error) {
+                addLog(action.name, { success: false, message: error.message });
+                return { success: false, message: error.message };
+            }
+        });
+    }
+
+    function createActionButtons(container) {
+        const grid = document.createElement('div');
+        grid.className = 'aihelp-zone-grid';
+
+        actions.forEach((action) => {
+            const btn = document.createElement('div');
+            btn.className = 'aihelp-zone-btn';
+            btn.innerHTML = action.icon;
+
+            btn.addEventListener('mouseenter', () => {
+                const rect = btn.getBoundingClientRect();
+                TipManager.showShortTip(btn, action, { left: rect.right + 10, top: rect.top });
+            });
+
+            btn.addEventListener('mouseleave', () => {
+                TipManager.hideTip();
+            });
+
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (btn.classList.contains('loading')) return;
+
+                btn.classList.add('loading');
+                const originalContent = btn.innerHTML;
+                btn.innerHTML = '...';
+
+                const result = await executeToolbarAction(action);
+
+                btn.classList.remove('loading');
+                if (result && result.success) {
+                    btn.classList.add('success');
+                    setTimeout(() => btn.classList.remove('success'), 1500);
+                }
+                btn.innerHTML = originalContent;
+            });
+
+            grid.appendChild(btn);
+        });
+
+        container.innerHTML = '';
+        container.appendChild(grid);
+    }
+
+    function hideUnifiedPanel() {
+        const panel = document.getElementById(LOG_PANEL_ID);
+        const icon = document.getElementById(FLOAT_ICON_ID);
+        if (panel) panel.classList.remove('visible');
+        if (icon) icon.style.display = 'flex';
+    }
+
+    function showUnifiedPanel(icon) {
+        const panel = document.getElementById(LOG_PANEL_ID) || createLogPanel();
+        panel.classList.add('visible');
+        icon.style.display = 'none';
+
+        if (!panel.dataset.positionInitialized) {
+            updatePanelPosition(icon, panel);
+            panel.dataset.positionInitialized = '1';
+            ToolUtil.savePosition(STORAGE_KEYS.LOG_PANEL_POSITION, panel);
+        }
+
+        return panel;
+    }
+
+    function createFloatIcon() {
+        if (document.getElementById(FLOAT_ICON_ID)) return;
+
+        const icon = document.createElement('div');
+        icon.id = FLOAT_ICON_ID;
+        icon.innerHTML = '+';
+
+        document.body.appendChild(icon);
+
+        const hasPosition = ToolUtil.loadPosition(STORAGE_KEYS.FLOAT_ICON_POSITION, icon);
+        if (!hasPosition) {
+            icon.style.top = '120px';
+            icon.style.right = '20px';
+        }
+
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+
+        icon.addEventListener('mousedown', (e) => {
+            isDragging = false;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = icon.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+
+            const onMove = (ev) => {
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                    isDragging = true;
+                    let newLeft = startLeft + dx;
+                    let newTop = startTop + dy;
+
+                    newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - icon.offsetWidth));
+                    newTop = Math.max(0, Math.min(newTop, window.innerHeight - icon.offsetHeight));
+
+                    icon.style.left = newLeft + 'px';
+                    icon.style.top = newTop + 'px';
+                    icon.style.right = 'auto';
+                    icon.style.bottom = 'auto';
+                }
+            };
+
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+
+                if (isDragging) {
+                    ToolUtil.savePosition(STORAGE_KEYS.FLOAT_ICON_POSITION, icon);
+                }
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        icon.addEventListener('click', () => {
+            if (isDragging) return;
+            showUnifiedPanel(icon);
+        });
+    }
+
+    function updatePanelPosition(icon, panel) {
+        const iconRect = icon.getBoundingClientRect();
+        const panelWidth = panel.offsetWidth || LOG_CONFIG.defaultLogPanelSize.width;
+        const panelHeight = panel.offsetHeight || LOG_CONFIG.defaultLogPanelSize.height;
+
+        let left = iconRect.left - panelWidth - 10;
+        let top = iconRect.top + (iconRect.height / 2) - (panelHeight / 2);
+
+        if (left < 10) {
+            left = iconRect.right + 10;
+        }
+        if (top < 10) {
+            top = 10;
+        }
+        if (top + panelHeight > window.innerHeight - 10) {
+            top = window.innerHeight - panelHeight - 10;
+        }
+
+        panel.style.left = left + 'px';
+        panel.style.top = top + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+    }
+
+    function createLogPanel() {
+        const existing = document.getElementById(LOG_PANEL_ID);
+        if (existing) return existing;
+
+        const panel = document.createElement('div');
+        panel.id = LOG_PANEL_ID;
+        panel.innerHTML = `
+            <div class="log-header">
+                <h3>批量处理与日志</h3>
+                <button class="close-btn">×</button>
+            </div>
+            <div class="tool-actions"></div>
+            <div class="log-content">
+                <div class="log-empty">暂无日志记录</div>
+            </div>
+            <div class="ai-resize-handle"></div>
+        `;
+
+        panel.querySelector('.close-btn').addEventListener('click', () => {
+            hideUnifiedPanel();
+        });
+
+        createActionButtons(panel.querySelector('.tool-actions'));
+        document.body.appendChild(panel);
+
+        const hasSavedPosition = ToolUtil.loadPosition(STORAGE_KEYS.LOG_PANEL_POSITION, panel);
+        panel.dataset.positionInitialized = hasSavedPosition ? '1' : '';
+
+        const savedSize = ToolUtil.loadSize(STORAGE_KEYS.LOG_PANEL_SIZE, panel);
+        if (!savedSize) {
+            panel.style.width = LOG_CONFIG.defaultLogPanelSize.width + 'px';
+            panel.style.height = LOG_CONFIG.defaultLogPanelSize.height + 'px';
+        }
+
+        const header = panel.querySelector('.log-header');
+        let isDragging = false;
+        let startX, startY, startLeft, startTop;
+
+        header.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.close-btn')) return;
+            isDragging = false;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = panel.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+
+            const onMove = (ev) => {
+                const dx = ev.clientX - startX;
+                const dy = ev.clientY - startY;
+
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                    isDragging = true;
+                    let newLeft = startLeft + dx;
+                    let newTop = startTop + dy;
+
+                    newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - panel.offsetWidth));
+                    newTop = Math.max(0, Math.min(newTop, window.innerHeight - panel.offsetHeight));
+
+                    panel.style.left = newLeft + 'px';
+                    panel.style.top = newTop + 'px';
+                    panel.style.right = 'auto';
+                    panel.style.bottom = 'auto';
+                }
+            };
+
+            const onUp = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+                if (isDragging) {
+                    ToolUtil.savePosition(STORAGE_KEYS.LOG_PANEL_POSITION, panel);
+                }
+            };
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        const resizeHandle = panel.querySelector('.ai-resize-handle');
+        let isResizing = false;
+        let resizeStartX, resizeStartY, resizeStartWidth, resizeStartHeight;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            isResizing = true;
+            resizeStartX = e.clientX;
+            resizeStartY = e.clientY;
+            const rect = panel.getBoundingClientRect();
+            resizeStartWidth = rect.width;
+            resizeStartHeight = rect.height;
+
+            const onResizeMove = (ev) => {
+                if (!isResizing) return;
+                const dx = ev.clientX - resizeStartX;
+                const dy = ev.clientY - resizeStartY;
+                let newWidth = resizeStartWidth + dx;
+                let newHeight = resizeStartHeight + dy;
+
+                newWidth = Math.max(LOG_CONFIG.minLogPanelSize.width, newWidth);
+                newHeight = Math.max(LOG_CONFIG.minLogPanelSize.height, newHeight);
+                newWidth = Math.min(newWidth, window.innerWidth - 50);
+                newHeight = Math.min(newHeight, window.innerHeight - 50);
+
+                panel.style.width = newWidth + 'px';
+                panel.style.height = newHeight + 'px';
+            };
+
+            const onResizeUp = () => {
+                document.removeEventListener('mousemove', onResizeMove);
+                document.removeEventListener('mouseup', onResizeUp);
+                if (isResizing) {
+                    ToolUtil.saveSize(STORAGE_KEYS.LOG_PANEL_SIZE, panel);
+                    ToolUtil.savePosition(STORAGE_KEYS.LOG_PANEL_POSITION, panel);
+                }
+                isResizing = false;
+            };
+
+            document.addEventListener('mousemove', onResizeMove);
+            document.addEventListener('mouseup', onResizeUp);
+        });
+
+        startLogCleanupTimer();
+        return panel;
+    }
+
     function monitorRouteChange() {
         let lastUrl = window.location.href;
 
@@ -2972,7 +3632,7 @@
         createFloatIcon();
         createLogPanel();
         monitorRouteChange();
-        console.log('[AIHelp工单工具] 已加载 v3.5.3 - 点击悬浮图标执行筛选或批量操作');
+        console.log('[AIHelp工单工具] 已加载 v3.6.0 - 点击悬浮图标展开批量处理与日志面板');
     }
 
     if (document.readyState === 'loading') {
