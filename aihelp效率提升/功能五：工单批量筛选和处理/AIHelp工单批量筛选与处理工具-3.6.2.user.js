@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AIHelp工单批量筛选与处理工具
 // @namespace    http://tampermonkey.net/
-// @version      3.6.4
+// @version      3.6.2
 // @description  AIHelp工单批量筛选与批量处理工具，提供一键快捷操作，新增BUG自动解决功能，全面优化点击速度
 // @author       ll96victor
 // @match        https://ml-panel.aihelp.net/dashboard/*
@@ -12,30 +12,6 @@
 
 (function() {
     'use strict';
-
-    /**
-      * 3.6.4 更新说明 (2026-03-27)：
-      *
-      * 【性能优化】
-      * 1. 分配功能进一步提速 - 去掉所有scrollIntoView和冗余固定sleep：
-      *    - Step3: 去掉scrollIntoView和logger.log（JS直接调用不需要元素在视口内）
-      *    - Step6: 去掉选中后sleep(150)，直接进入Step7的waitForCondition
-      *    - Step7: 去掉提交→确认间的sleep(250)，由waitForCondition轮询等popover可见
-      *    - 总计又省约400ms固定等待
-      */
-
-    /**
-      * 3.6.3 更新说明 (2026-03-27)：
-      *
-      * 【性能优化】
-      * 1. 分配功能全流程提速，基于精确DOM结构去除冗余等待：
-      *    - Step3: 去掉scrollIntoView的smooth动画和200ms等待
-      *    - Step4-5: 去掉搜索框focus前100ms等待，输入后等待从800ms降至400ms
-      *    - Step6: 去掉scrollIntoView和选中后300ms等待，降至150ms
-      *    - Step7: 直接.click()替代fastClick(80ms)，提交→确认间隔从500ms降至250ms
-      *    - 各waitForCondition timeout从3000ms降至2000ms（轮询间隔50ms不变）
-      *    - 去掉冗余logger.log调用，合并日志输出
-      */
 
     /**
       * 3.6.2 更新说明 (2026-03-27)：
@@ -2259,6 +2235,9 @@
                 }
 
                 // Step 3: 点击工单受理人的readonly input，触发el-select下拉面板
+                logger.log('点击工单受理人输入框');
+                assigneeInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                await ToolUtil.sleep(200);
                 assigneeInput.focus();
                 const rect = assigneeInput.getBoundingClientRect();
                 const cx = rect.left + rect.width / 2;
@@ -2271,42 +2250,61 @@
                 });
 
                 // Step 4: 等待下拉面板中的搜索框出现
+                logger.log('等待搜索框出现');
                 const searchInput = await ToolUtil.waitForNearestVisibleSearchInput(assigneeInput, 3000);
-                if (!searchInput) { logger.error('未找到搜索框'); throw new Error('未找到搜索框'); }
+                if (!searchInput) {
+                    logger.error('未找到搜索框');
+                    throw new Error('未找到搜索框');
+                }
 
                 // Step 5: 在搜索框输入受理人名称
-                logger.log(`选择受理人：${config.id}`);
+                logger.log(`输入受理人：${config.id}`);
                 searchInput.focus();
+                await ToolUtil.sleep(100);
                 if (!ToolUtil.setNativeInputValue(searchInput, config.id)) {
-                    logger.error('搜索框输入失败'); throw new Error('搜索框输入失败');
+                    logger.error('搜索框输入失败');
+                    throw new Error('搜索框输入失败');
                 }
-                await ToolUtil.sleep(400);
+                await ToolUtil.sleep(800);
 
-                // Step 6: 点击匹配的选项
+                // Step 6: 在下拉面板中查找并点击匹配的选项
+                logger.log(`查找匹配项：${config.id}`);
                 const option = await ToolUtil.waitForNearestVisibleOption(config.id, searchInput, {
-                    selectors: ['li'], timeout: 2000, exactFirst: true
+                    selectors: ['li'],
+                    timeout: 3000,
+                    exactFirst: true
                 });
-                if (!option) { logger.error(`未找到受理人选项: ${config.id}`); throw new Error(`未找到受理人选项: ${config.id}`); }
+                if (!option) {
+                    logger.error(`未找到受理人选项: ${config.id}`);
+                    throw new Error(`未找到受理人选项: ${config.id}`);
+                }
+                option.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                await ToolUtil.sleep(100);
                 option.click();
+                logger.log(`已选择 ${config.id}`);
+                await ToolUtil.sleep(300);
 
-                // Step 7: 通过DOM结构精确定位提交和确认按钮
+                // Step 7: 通过DOM结构精确定位提交和确认按钮，避免文本匹配到页面上其他同名按钮
+                logger.log('点击提交按钮');
                 const submitBtn = await ToolUtil.waitForCondition(
                     () => document.querySelector('.drawerFooter button.el-button--primary'),
-                    { timeout: 2000 }
+                    { timeout: 3000 }
                 );
                 if (!submitBtn) { logger.error('未找到提交按钮'); throw new Error('未找到提交按钮'); }
-                submitBtn.click();
+                await ToolUtil.fastClick(submitBtn, { fastDelay: 80, fallbackDelay: 200, logger });
+                await ToolUtil.sleep(500);
 
+                logger.log('点击确认按钮');
                 const confirmBtn = await ToolUtil.waitForCondition(
                     () => {
                         const popper = document.querySelector('.drawerFooter .set_popper');
                         if (!popper || popper.style.display === 'none') return null;
                         return popper.querySelector('button.el-button--danger');
                     },
-                    { timeout: 2000 }
+                    { timeout: 3000 }
                 );
                 if (!confirmBtn) { logger.error('未找到确认按钮'); throw new Error('未找到确认按钮'); }
-                confirmBtn.click();
+                await ToolUtil.fastClick(confirmBtn, { fastDelay: 80, fallbackDelay: 200, logger });
 
                 logger.success(`批量分配给${config.displayName}完成`);
                 return { success: true, message: `批量分配给${config.displayName}完成` };

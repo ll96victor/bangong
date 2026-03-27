@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AIHelp工单批量筛选与处理工具
 // @namespace    http://tampermonkey.net/
-// @version      3.6.4
+// @version      3.6.0
 // @description  AIHelp工单批量筛选与批量处理工具，提供一键快捷操作，新增BUG自动解决功能，全面优化点击速度
 // @author       ll96victor
 // @match        https://ml-panel.aihelp.net/dashboard/*
@@ -12,55 +12,6 @@
 
 (function() {
     'use strict';
-
-    /**
-      * 3.6.4 更新说明 (2026-03-27)：
-      *
-      * 【性能优化】
-      * 1. 分配功能进一步提速 - 去掉所有scrollIntoView和冗余固定sleep：
-      *    - Step3: 去掉scrollIntoView和logger.log（JS直接调用不需要元素在视口内）
-      *    - Step6: 去掉选中后sleep(150)，直接进入Step7的waitForCondition
-      *    - Step7: 去掉提交→确认间的sleep(250)，由waitForCondition轮询等popover可见
-      *    - 总计又省约400ms固定等待
-      */
-
-    /**
-      * 3.6.3 更新说明 (2026-03-27)：
-      *
-      * 【性能优化】
-      * 1. 分配功能全流程提速，基于精确DOM结构去除冗余等待：
-      *    - Step3: 去掉scrollIntoView的smooth动画和200ms等待
-      *    - Step4-5: 去掉搜索框focus前100ms等待，输入后等待从800ms降至400ms
-      *    - Step6: 去掉scrollIntoView和选中后300ms等待，降至150ms
-      *    - Step7: 直接.click()替代fastClick(80ms)，提交→确认间隔从500ms降至250ms
-      *    - 各waitForCondition timeout从3000ms降至2000ms（轮询间隔50ms不变）
-      *    - 去掉冗余logger.log调用，合并日志输出
-      */
-
-    /**
-      * 3.6.2 更新说明 (2026-03-27)：
-      *
-      * 【Bug修复】
-      * 1. 分配功能Step7：提交/确认按钮改为基于DOM结构精确定位
-      *    - 提交按钮：.drawerFooter button.el-button--primary
-      *    - 确认按钮：等待popover可见后，.set_popper button.el-button--danger
-      *    - 避免页面上存在多个同名按钮时误点
-      */
-
-    /**
-      * 3.6.1 更新说明 (2026-03-27)：
-      *
-      * 【Bug修复】
-      * 1. 修复批量分配功能（L/N/W/X）无法正确选择受理人的问题
-      *    - 原因：createAssignAction 存在两个重复定义，且实际生效版本
-      *      依赖链式调用时序等待不足，下拉面板/搜索框未稳定即开始操作
-      *    - 解决：删除被覆盖的死代码 createAssignAction（238行），
-      *      重写 execute 为步骤式操作：点击readonly input -> 等待搜索框
-      *      -> 输入姓名 -> 等待并点击匹配项 -> 提交 -> 确认
-      *    - 修复提交流程：先点"提交"按钮，再点popover中的"确认"按钮
-      *    - 增加各步骤等待时间，提升操作稳定性
-      *    - 影响范围：L/N/W/X 四个分配按钮
-      */
 
     /**
      * 3.6.0 鏇存柊璇存槑锛?
@@ -990,6 +941,245 @@
             throw new Error('未找到筛选按钮');
         }
     };
+
+    // ==================== 批量分配功能工厂 ====================
+    function createAssignAction(assigneeKey) {
+        const config = ASSIGNEE_CONFIG[assigneeKey];
+        if (!config) {
+            throw new Error(`未知的受理人标识: ${assigneeKey}`);
+        }
+
+        return {
+            name: `分配给${config.name}`,
+            icon: config.name,
+            shortTip: `分配给 ${config.displayName}`,
+            detailTip: `将选中工单批量分配给 ${config.displayName}`,
+            assigneeId: config.id,
+            async execute() {
+                console.log(`=== 开始执行批量分配给 ${config.displayName} ===`);
+                const logger = createLogChannel('受理人');
+                logger.log(`开始批量分配给 ${config.displayName}`);
+
+                // Step 1: 点击编辑按钮
+                console.log('Step 1: 点击编辑按钮');
+                logger.log('点击编辑按钮');
+                try {
+                    await ToolUtil.clickByText(['button', 'span'], '编辑');
+                } catch (e) {
+                    logger.error('未找到编辑按钮，请先勾选工单');
+                    throw new Error('未找到编辑按钮，请先勾选工单');
+                }
+                await ToolUtil.sleep(1500);
+
+                // Step 2: 查找工单受理人输入框
+                console.log('Step 2: 查找工单受理人输入框');
+                logger.log('查找工单受理人输入框');
+
+                let assigneeInput = null;
+                const allFormItems = document.querySelectorAll('.el-form-item');
+                for (const item of allFormItems) {
+                    const labelEl = item.querySelector('.el-form-item__label');
+                    if (labelEl && labelEl.textContent.includes('工单受理人')) {
+                        const input = item.querySelector('input');
+                        if (input) {
+                            const rect = input.getBoundingClientRect();
+                            if (rect.width > 0 && rect.height > 0) {
+                                assigneeInput = input;
+                                console.log('通过label找到工单受理人输入框，位置:', rect.top, rect.left);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!assigneeInput) {
+                    logger.error('未找到工单受理人输入框');
+                    throw new Error('未找到工单受理人输入框');
+                }
+
+                // Step 3: 点击工单受理人输入框
+                console.log('Step 3: 点击工单受理人输入框');
+                logger.log('点击工单受理人输入框');
+                assigneeInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                await ToolUtil.sleep(300);
+                assigneeInput.focus();
+
+                // 使用完整的事件序列触发下拉框
+                const rect = assigneeInput.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                ['mousedown', 'mouseup', 'click'].forEach(type => {
+                    assigneeInput.dispatchEvent(new MouseEvent(type, {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        clientX: cx,
+                        clientY: cy,
+                        button: 0
+                    }));
+                });
+                console.log('已点击工单受理人输入框（完整事件序列）');
+
+                // 点击后等待下拉框出现
+                await ToolUtil.sleep(1200);
+
+                // Step 4: 在搜索框输入受理人名称
+                console.log(`Step 4: 在搜索框输入 ${config.id}`);
+                logger.log(`选择受理人：${config.id}`);
+
+                const allSearchInputs = document.querySelectorAll('input[placeholder="搜索"]');
+                console.log('找到搜索框数量:', allSearchInputs.length);
+
+                const inputRect = assigneeInput.getBoundingClientRect();
+                let searchInput = null;
+                let minDistance = Infinity;
+
+                for (const input of allSearchInputs) {
+                    const rect = input.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {
+                        const distance = Math.abs(rect.top - inputRect.top);
+                        console.log('搜索框位置:', rect.top, rect.left, '距离:', distance);
+                        if (distance < minDistance) {
+                            minDistance = distance;
+                            searchInput = input;
+                        }
+                    }
+                }
+
+                console.log('选择的搜索框距离:', minDistance);
+
+                if (searchInput) {
+                    searchInput.focus();
+                    await ToolUtil.sleep(200);
+
+                    const nativeSetter = Object.getOwnPropertyDescriptor(
+                        window.HTMLInputElement.prototype, 'value'
+                    ).set;
+                    nativeSetter.call(searchInput, config.id);
+                    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    console.log(`已在搜索框输入 ${config.id}`);
+                } else {
+                    logger.error('未找到搜索框');
+                    throw new Error('未找到搜索框');
+                }
+                await ToolUtil.sleep(800);
+
+                // Step 5: 点击下拉选项
+                console.log(`Step 5: 点击下拉选项 ${config.id}`);
+                await ToolUtil.sleep(300);
+
+                const assigneeOptions = document.querySelectorAll('li');
+                let foundOption = null;
+                let minOptionDistance = Infinity;
+                const searchRect = searchInput.getBoundingClientRect();
+
+                for (const li of assigneeOptions) {
+                    const text = li.textContent.trim();
+                    const rect = li.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0 && text.includes(config.id)) {
+                        const distance = Math.abs(rect.top - searchRect.top);
+                        console.log('找到选项, 文本:', text, '位置:', rect.top, rect.left, '距离:', distance);
+                        if (distance < minOptionDistance) {
+                            minOptionDistance = distance;
+                            foundOption = li;
+                        }
+                    }
+                }
+
+                if (foundOption) {
+                    console.log('选择距离最近的选项, 距离:', minOptionDistance);
+                    foundOption.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    await ToolUtil.sleep(200);
+                    foundOption.click();
+                    console.log(`已选择 ${config.id}`);
+                } else {
+                    logger.error(`未找到受理人选项: ${config.id}`);
+                    throw new Error(`未找到受理人选项: ${config.id}`);
+                }
+
+                // Step 6: 点击提交按钮
+                console.log('Step 6: 点击提交按钮');
+                logger.log('点击提交按钮');
+
+                let submitBtn = null;
+
+                // 方法1: 查找el-popover中的提交按钮
+                const popovers = document.querySelectorAll('.el-popover, .el-message-box');
+                for (const popover of popovers) {
+                    const style = window.getComputedStyle(popover);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+
+                    const buttons = popover.querySelectorAll('button');
+                    for (const btn of buttons) {
+                        const text = btn.textContent.trim();
+                        if (text === '提交' || text === '确认') {
+                            const rect = btn.getBoundingClientRect();
+                            if (rect.width > 0 && rect.height > 0) {
+                                submitBtn = btn;
+                                console.log('在popover找到按钮:', text);
+                                break;
+                            }
+                        }
+                    }
+                    if (submitBtn) break;
+                }
+
+                // 方法2: 查找弹窗内的提交按钮
+                if (!submitBtn) {
+                    const dialogs = document.querySelectorAll('.el-dialog__wrapper, .el-dialog');
+                    for (const dialog of dialogs) {
+                        const style = window.getComputedStyle(dialog);
+                        if (style.display === 'none' || style.visibility === 'hidden') continue;
+
+                        const buttons = dialog.querySelectorAll('button');
+                        for (const btn of buttons) {
+                            const text = btn.textContent.trim();
+                            if (text === '提交') {
+                                const rect = btn.getBoundingClientRect();
+                                if (rect.width > 0 && rect.height > 0) {
+                                    submitBtn = btn;
+                                    console.log('在dialog找到提交按钮');
+                                    break;
+                                }
+                            }
+                        }
+                        if (submitBtn) break;
+                    }
+                }
+
+                // 方法3: 全局搜索
+                if (!submitBtn) {
+                    const allButtons = document.querySelectorAll('button');
+                    for (const btn of allButtons) {
+                        const text = btn.textContent.trim();
+                        if (text === '提交') {
+                            const rect = btn.getBoundingClientRect();
+                            if (rect.width > 0 && rect.height > 0) {
+                                submitBtn = btn;
+                                console.log('找到提交按钮(全局搜索)');
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (submitBtn) {
+                    submitBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    await ToolUtil.sleep(200);
+                    submitBtn.click();
+                    console.log('已点击提交按钮');
+                } else {
+                    logger.error('未找到提交按钮');
+                    throw new Error('未找到提交按钮');
+                }
+
+                logger.success(`批量分配给 ${config.displayName} 完成`);
+                console.log(`=== 批量分配给 ${config.displayName} 完成 ===`);
+                return { success: true, message: `批量分配给 ${config.displayName} 完成` };
+            }
+        };
+    }
 
     // ==================== 批量解决功能工厂 ====================
     function createResolveAction() {
@@ -2229,87 +2419,23 @@
         }
 
         return {
-            name: `分配给${config.name}`,
+            name: `\u5206\u914d\u7ed9${config.name}`,
             icon: config.name,
-            shortTip: `分配给${config.displayName}`,
-            detailTip: `将选中工单批量分配给${config.displayName}`,
+            shortTip: `\u5206\u914d\u7ed9${config.displayName}`,
+            detailTip: `\u5c06\u9009\u4e2d\u5de5\u5355\u6279\u91cf\u5206\u914d\u7ed9${config.displayName}`,
             assigneeId: config.id,
             async execute() {
-                const logger = createLogChannel('受理人');
-                logger.log(`开始批量分配给 ${config.displayName}`);
+                const logger = createLogChannel('\u53d7\u7406\u4eba');
+                logger.log(`\u5f00\u59cb\u6279\u91cf\u5206\u914d\u7ed9 ${config.displayName}`);
 
-                // Step 1: 点击编辑按钮，打开批量编辑抽屉
-                logger.log('点击编辑按钮');
-                try {
-                    await ToolUtil.clickByText(['button', 'span'], '编辑');
-                } catch (e) {
-                    logger.error('未找到编辑按钮，请先勾选工单');
-                    throw new Error('未找到编辑按钮，请先勾选工单');
-                }
-
-                // Step 2: 等待批量编辑抽屉渲染，查找"工单受理人"输入框
-                logger.log('查找工单受理人输入框');
-                const assigneeInput = await ToolUtil.waitForCondition(
-                    () => ToolUtil.findFormInputByLabel('工单受理人'),
-                    { timeout: 3000 }
-                );
-                if (!assigneeInput) {
-                    logger.error('未找到工单受理人输入框');
-                    throw new Error('未找到工单受理人输入框');
-                }
-
-                // Step 3: 点击工单受理人的readonly input，触发el-select下拉面板
-                assigneeInput.focus();
-                const rect = assigneeInput.getBoundingClientRect();
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                ['mousedown', 'mouseup', 'click'].forEach(type => {
-                    assigneeInput.dispatchEvent(new MouseEvent(type, {
-                        bubbles: true, cancelable: true, view: window,
-                        clientX: cx, clientY: cy, button: 0
-                    }));
+                const assigneeInput = await openBatchEditAndFindField('\u5de5\u5355\u53d7\u7406\u4eba', logger);
+                await ToolUtil.selectDropdownOption(assigneeInput, config.id, config.id, logger, {
+                    optionSelectors: ['li']
                 });
+                await ToolUtil.clickSubmitButton(logger, ['\u63d0\u4ea4', '\u786e\u8ba4']);
 
-                // Step 4: 等待下拉面板中的搜索框出现
-                const searchInput = await ToolUtil.waitForNearestVisibleSearchInput(assigneeInput, 3000);
-                if (!searchInput) { logger.error('未找到搜索框'); throw new Error('未找到搜索框'); }
-
-                // Step 5: 在搜索框输入受理人名称
-                logger.log(`选择受理人：${config.id}`);
-                searchInput.focus();
-                if (!ToolUtil.setNativeInputValue(searchInput, config.id)) {
-                    logger.error('搜索框输入失败'); throw new Error('搜索框输入失败');
-                }
-                await ToolUtil.sleep(400);
-
-                // Step 6: 点击匹配的选项
-                const option = await ToolUtil.waitForNearestVisibleOption(config.id, searchInput, {
-                    selectors: ['li'], timeout: 2000, exactFirst: true
-                });
-                if (!option) { logger.error(`未找到受理人选项: ${config.id}`); throw new Error(`未找到受理人选项: ${config.id}`); }
-                option.click();
-
-                // Step 7: 通过DOM结构精确定位提交和确认按钮
-                const submitBtn = await ToolUtil.waitForCondition(
-                    () => document.querySelector('.drawerFooter button.el-button--primary'),
-                    { timeout: 2000 }
-                );
-                if (!submitBtn) { logger.error('未找到提交按钮'); throw new Error('未找到提交按钮'); }
-                submitBtn.click();
-
-                const confirmBtn = await ToolUtil.waitForCondition(
-                    () => {
-                        const popper = document.querySelector('.drawerFooter .set_popper');
-                        if (!popper || popper.style.display === 'none') return null;
-                        return popper.querySelector('button.el-button--danger');
-                    },
-                    { timeout: 2000 }
-                );
-                if (!confirmBtn) { logger.error('未找到确认按钮'); throw new Error('未找到确认按钮'); }
-                confirmBtn.click();
-
-                logger.success(`批量分配给${config.displayName}完成`);
-                return { success: true, message: `批量分配给${config.displayName}完成` };
+                logger.success(`\u6279\u91cf\u5206\u914d\u7ed9${config.displayName}\u5b8c\u6210`);
+                return { success: true, message: `\u6279\u91cf\u5206\u914d\u7ed9${config.displayName}\u5b8c\u6210` };
             }
         };
     }
