@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         工单助手与Task客服信息提取合并版 6.8.21
+// @name         工单助手与Task客服信息提取合并版 6.8.20
 // @namespace    http://tampermonkey.net/
-// @version      6.8.21
+// @version      6.8.20
 // @description  优化工单识别性能，并增强标题翻译、飞书搜索稳定性与复制链路
 // @author       ll96victor
 // @match        https://ml-panel.aihelp.net/*
@@ -31,13 +31,6 @@
 // ==/UserScript==
 
 /**
- * v6.8.21 (2026-03-28) 模块A/MCGG：发现迭代候选改为前缀优先，避免误点热修版本项
- *
- * 【变更摘要】
- *   - SharedUtils：下拉候选匹配新增可选“前缀优先”规则，优先命中以目标值开头的候选项
- *   - 模块 A / MCGG：仅“发现迭代”链路启用前缀优先，继续保留原有包含匹配兜底
- *   - 兼容后续迭代版本持续新增/变化，不写死 `2.1.60` 或具体候选文案
- *
  * v6.8.20 (2026-03-24) 模块A/MCGG：切单后先清理旧关联第三方下拉弹层，避免旧搜索词串到新工单
  *
  * 【变更摘要】
@@ -103,7 +96,7 @@
  * v6.8.10 (2026-03-22) Fix mail reward click confirmation chain and add fallback recovery for normal-ticket iteration/channel autofill
  *
  * v6.8.9 (2026-03-22) 优化了飞书页的逻辑，MCGG工单的“功能模块”自动处理，发送邮件未识别的问题
- * 
+ *
  * v6.8.8 (2026-03-22) 创建人自动填充；下拉选中项误点修复；翻译面板可编辑；邮件一键发送模块 H
  *
  * 【变更摘要】
@@ -1793,16 +1786,6 @@
                 return { item: exactMatch, reason: 'exact' };
             }
 
-            if (options.preferStartsWithMatch) {
-                const startsWithMatch = items.find(item => {
-                    const normalizedText = this.normalizeFieldLabel(item.textContent).toLowerCase();
-                    return normalizedText.startsWith(normalizedTarget);
-                });
-                if (startsWithMatch) {
-                    return { item: startsWithMatch, reason: 'startsWith' };
-                }
-            }
-
             const partialMatch = items.find(item => {
                 const normalizedText = this.normalizeFieldLabel(item.textContent).toLowerCase();
                 return normalizedText.includes(normalizedTarget) || normalizedTarget.includes(normalizedText);
@@ -2528,7 +2511,7 @@
             fullServerLists: ["【2.1.40全服】：", "【2.1.18全服】：", "【40.2全服】：", "【18.2全服】："],
             testServerLists: ["【40.2测服】：", "【2.1.52测服】：", "【1.9.88测服】：", "【2.1.50测服】："],
             fullServer: "【2.1.60全服】：",
-            testServer: "【2.1.66测服】：",
+            testServer: "【2.1.68测服】：",
             debounceDelay: 300,
             translationPanelDelayAfterChannelMs: 100,
             translationPanelForceDelayMs: 2000,
@@ -3653,8 +3636,7 @@
             log('发现迭代输入框获得焦点，准备填充:', state.faxiandiedai);
             const success = await SharedUtils.fillDropdownSearch(state.faxiandiedai, logger, 150, {
                 preferThirdLink: true,
-                allowSingleCandidateFallback: false,
-                preferStartsWithMatch: true
+                allowSingleCandidateFallback: false
             });
             if (!ensureTicketContextActive(ticketContext, '发现迭代焦点兜底')) return;
             const applied = await SharedUtils.confirmThirdLinkFieldApplied(
@@ -3716,8 +3698,7 @@
                     const isIterationField = stateKey === 'iterationFilled';
                     const success = await SharedUtils.fillDropdownSearch(value, logger, 150, {
                         preferThirdLink: true,
-                        allowSingleCandidateFallback: !isIterationField,
-                        preferStartsWithMatch: isIterationField
+                        allowSingleCandidateFallback: !isIterationField
                     });
                     if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
                         return false;
@@ -5051,8 +5032,7 @@
             log('发现迭代输入框获得焦点，准备填充: ' + state.faxiandiedai);
             const success = await SharedUtils.fillDropdownSearch(state.faxiandiedai, logger, 150, {
                 preferThirdLink: true,
-                allowSingleCandidateFallback: false,
-                preferStartsWithMatch: true
+                allowSingleCandidateFallback: false
             });
             if (!ensureTicketContextActive(ticketContext, 'MCGG 发现迭代焦点兜底')) return;
             const applied = await SharedUtils.confirmThirdLinkFieldApplied(
@@ -5131,8 +5111,7 @@
                     const isIterationField = stateKey === 'iterationFilled';
                     const success = await SharedUtils.fillDropdownSearch(value, logger, 150, {
                         preferThirdLink: true,
-                        allowSingleCandidateFallback: !isIterationField,
-                        preferStartsWithMatch: isIterationField
+                        allowSingleCandidateFallback: !isIterationField
                     });
                     if (!ensureTicketContextActive(ticketContext, fieldName + ' 自动填充')) {
                         return false;

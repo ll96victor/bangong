@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         飞书项目工具集 (状态栏版) 2.1.21
+// @name         飞书项目工具集 (状态栏版) 2.1.20
 // @namespace    http://tampermonkey.net/
-// @version      2.1.21
+// @version      2.1.20
 // @description  合并多个飞书项目相关工具脚本，使用状态栏UI设计。新增自动评论功能（已联系/未回复）。打开链接功能支持Alt+Q快捷键。
 // @match        https://project.feishu.cn/*
 // @match        https://project.feishu.cn/ml/onlineissue*
@@ -17,49 +17,45 @@
 
 /**
  * 更新日志：
- * v2.1.21
- * - 回退：除搜索框功能外，其余逻辑保持回退到 2.1.10 基线。
- * - 保留："已联系"检索继续支持连续点击查找下一个匹配项，并按预设关键词数组顺序依次查找展示。
  * v2.1.20
- * - 修复：搜索框成功判定改为校验"按钮展开状态变化"或"出现新的搜索输入框实例"，避免页面原本已存在输入框时被误判为点击成功。
- * - 修复：日志中的"点击成功"必须建立在点击前后状态真实变化的前提上，进一步消除搜索框假激活提示。
+ * - 修复：搜索框成功判定改为校验“按钮展开状态变化”或“出现新的搜索输入框实例”，避免页面原本已存在输入框时被误判为点击成功。
+ * - 修复：日志中的“点击成功”必须建立在点击前后状态真实变化的前提上，进一步消除搜索框假激活提示。
  * v2.1.19
- * - 修复：撤销搜索框功能对抽屉容器的错误限定，改回按参考脚本在主页面全局查找 `#story-view-search-container` 与"查找"按钮，适配"抽屉打开但搜索入口仍在抽屉外"的实际页面结构。
+ * - 修复：撤销搜索框功能对抽屉容器的错误限定，改回按参考脚本在主页面全局查找 `#story-view-search-container` 与“查找”按钮，适配“抽屉打开但搜索入口仍在抽屉外”的实际页面结构。
  * - 修复：搜索框激活日志不再输出抽屉优先路径，避免把评论模块的抽屉经验误套到飞书搜索入口。
  * v2.1.18
  * - 修复：抽屉状态下移除搜索按钮和搜索输入框对 `document` 的全局回退，严格限定在当前搜索根内查找，避免误把背景页元素识别为抽屉内目标而产生假成功日志。
- * - 修复：抽屉场景下按钮点击后的展开判断改为同一搜索根内校验，和飞书 skills 的"限定范围后逐层验证"方式保持一致。
+ * - 修复：抽屉场景下按钮点击后的展开判断改为同一搜索根内校验，和飞书 skills 的“限定范围后逐层验证”方式保持一致。
  * v2.1.17
- * - 修复：飞书页面弹出抽屉时，搜索框激活逻辑优先限定在 `.meego-drawer-content-wrapper` 内查找，避免误命中背景页的同名"查找"按钮导致前台无反应。
- * - 优化：搜索容器、查找按钮、搜索输入框统一走"抽屉优先，否则全局"的定位方式，对齐飞书项目 skills 中的 SPA 抽屉处理经验。
+ * - 修复：飞书页面弹出抽屉时，搜索框激活逻辑优先限定在 `.meego-drawer-content-wrapper` 内查找，避免误命中背景页的同名“查找”按钮导致前台无反应。
+ * - 优化：搜索容器、查找按钮、搜索输入框统一走“抽屉优先，否则全局”的定位方式，对齐飞书项目 skills 中的 SPA 抽屉处理经验。
  * v2.1.16
  * - 修复：搜索框点击逻辑进一步对齐参考脚本，优先直接调用查找按钮原生 `click()`，仅在未展开时再做一次外层触发补救，避免自定义事件链干扰飞书按钮响应。
  * - 修复：搜索框激活前增加按钮就绪等待与点击后短暂缓冲，减少按钮已渲染但交互尚未挂载时的空点击问题。
  * v2.1.15
- * - 修复：搜索框激活成功条件改为"查找按钮已展开(aria-expanded=true)或对应搜索输入框出现且聚焦成功"，避免误匹配其他输入框导致假成功日志。
- * - 修复：搜索点击目标固定优先命中 #story-view-search-filter，并补充 pointer/mouse 原生事件链，确保用户视角可见"查找"被真实触发。
+ * - 修复：搜索框激活成功条件改为“查找按钮已展开(aria-expanded=true)或对应搜索输入框出现且聚焦成功”，避免误匹配其他输入框导致假成功日志。
+ * - 修复：搜索点击目标固定优先命中 #story-view-search-filter，并补充 pointer/mouse 原生事件链，确保用户视角可见“查找”被真实触发。
  * v2.1.14
- * - 修复：搜索框激活逻辑改为直接复用参考脚本的飞书搜索点击链路，按"等待容器 -> 查找按钮 -> 原生 click -> 等待输入框"的顺序执行。
+ * - 修复：搜索框激活逻辑改为直接复用参考脚本的飞书搜索点击链路，按“等待容器 -> 查找按钮 -> 原生 click -> 等待输入框”的顺序执行。
  * v2.1.13
  * - 修复：针对新的飞书查找按钮结构优先使用 `#story-view-search-filter`、`PointerEvent` 等组合完成点击，并且只有输入框真正激活并聚焦后才记录成功。
  * v2.1.12
- * - 增强：状态栏新增"搜索框"入口，支持展开飞书查找按钮并高亮命中位置，日志同步提示。
+ * - 增强：状态栏新增“搜索框”入口，支持展开飞书查找按钮并高亮命中位置，日志同步提示。
  * v2.1.11
- * - 新增：搜索框功能
- * - 优化："已联系"检索功能也支持了连续点击查找下一个匹配项的功能，并会按预设关键词数组的顺序依次查找展示。
- * 
+ * - 优化：“已联系”检索功能也支持了连续点击查找下一个匹配项的功能，并会按预设关键词数组的顺序依次查找展示。
+ *
  * v2.1.10
- * - 修复："@ 找@"功能连续点击时因防抖导致的误拦截提示频繁问题。
- * - 优化："@ 找@"功能在未找到 @ 时，能够正确匹配并高亮所有非 Albin 的评论记录。
- * 
+ * - 修复：“@ 找@”功能连续点击时因防抖导致的误拦截提示频繁问题。
+ * - 优化：“@ 找@”功能在未找到 @ 时，能够正确匹配并高亮所有非 Albin 的评论记录。
+ *
  * v2.1.9
- * - 优化："@ 找@"功能支持连续点击查找下一个匹配项（类似Ctrl+F效果），并显示当前匹配进度。
- * 
+ * - 优化：“@ 找@”功能支持连续点击查找下一个匹配项（类似Ctrl+F效果），并显示当前匹配进度。
+ *
  * v2.1.8
- * - 新增：状态栏与日志面板中添加"@ 找@"功能，一键跳转到页面内的@位置。若无@则自动匹配非朱亚斌(Albin)的评论时间节点。
- * 
+ * - 新增：状态栏与日志面板中添加“@ 找@”功能，一键跳转到页面内的@位置。若无@则自动匹配非朱亚斌(Albin)的评论时间节点。
+ *
  * v2.1.7
- * - 修复：智能网页关键词检索功能中，由于脚本自身的UI（如日志面板、状态栏）包含了"已联系"等关键词，导致误判显示"√"图标的bug。现已在搜索时排除脚本自身的UI元素。
+ * - 修复：智能网页关键词检索功能中，由于脚本自身的UI（如日志面板、状态栏）包含了“已联系”等关键词，导致误判显示“√”图标的bug。现已在搜索时排除脚本自身的UI元素。
  */
 
 (function() {
@@ -660,7 +656,7 @@
         currentIndex: -1,
         lastSearchTime: 0
     };
-    
+
     function searchKeywords() {
         const now = Date.now();
         // 放宽防抖限制，支持连续点击
@@ -777,7 +773,7 @@
 
     // 智能网页 @ 检索功能
     const atLogger = createLogChannel('at');
-    
+
     // 存储所有匹配到的节点和索引，用于实现"查找下一个"功能
     let atSearchState = {
         matches: [],
@@ -800,54 +796,54 @@
         if (shouldRescan) {
             clearHighlights();
             showToast('🔍 正在检索@或评论...');
-            
+
             setTimeout(() => {
                 const newMatches = [];
                 const commentRegex = /于\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+评论/;
-    
+
                 const walker = document.createTreeWalker(
                     document.body,
                     NodeFilter.SHOW_TEXT,
                     {
                         acceptNode: function(node) {
                             if (node.textContent.trim().length === 0) return NodeFilter.FILTER_REJECT;
-                            
+
                             // 排除脚本自身的UI元素
                             const parent = node.parentElement;
                             if (parent && parent.closest && parent.closest('#ai-log-panel, .ai-status-bar-container, .ai-toast, .cb-search-highlight')) {
                                 return NodeFilter.FILTER_REJECT;
                             }
-                            
+
                             return NodeFilter.FILTER_ACCEPT;
                         }
                     },
                     false
                 );
-    
+
                 // 遍历所有文本节点
                 let node;
                 const allNodes = [];
                 while (node = walker.nextNode()) {
                     allNodes.push(node);
                 }
-                
+
                 // 1. 优先收集所有包含 '@' 的节点
                 for (const n of allNodes) {
                     if (n.textContent.includes('@') && isElementVisible(n.parentElement)) {
                         newMatches.push({ node: n, keyword: '@', type: 'at' });
                     }
                 }
-                
+
                 // 2. 收集符合条件的评论节点
                 for (let i = 0; i < allNodes.length; i++) {
                     const currentNode = allNodes[i];
                     const text = currentNode.textContent;
                     const match = text.match(commentRegex);
-                    
+
                     if (match && isElementVisible(currentNode.parentElement)) {
                         let prevText = "";
                         const index = match.index;
-                        
+
                         if (index > 0) {
                             prevText = text.substring(0, index).trim();
                         } else if (i > 0) {
@@ -859,13 +855,13 @@
                                 prevText = allNodes[j].textContent.trim();
                             }
                         }
-                        
+
                         if (!prevText.includes('朱亚斌(Albin)')) {
                             newMatches.push({ node: currentNode, keyword: match[0], type: 'comment' });
                         }
                     }
                 }
-                
+
                 if (newMatches.length > 0) {
                     atSearchState.matches = newMatches;
                     atSearchState.currentIndex = 0;
@@ -877,7 +873,7 @@
                     showToast('❌ 未找到相关记录');
                     atLogger.warn('未找到 @ 标记或符合条件的评论');
                 }
-                
+
                 moduleStates.searchAt.isProcessing = false;
             }, 50);
         } else {
@@ -888,13 +884,13 @@
             moduleStates.searchAt.isProcessing = false;
         }
     }
-    
+
     function highlightAndJumpToCurrentMatch() {
         clearHighlights();
-        
+
         const matchInfo = atSearchState.matches[atSearchState.currentIndex];
         const { node, keyword, type } = matchInfo;
-        
+
         // 检查节点是否仍在DOM中（可能页面已更新）
         if (!document.body.contains(node)) {
             // 如果节点不在DOM中，强制重新扫描
@@ -902,12 +898,12 @@
             searchAtKeyword();
             return;
         }
-        
+
         const fragment = highlightTextNode(node, keyword);
         if (fragment) {
             node.parentNode.replaceChild(fragment, node);
         }
-        
+
         const highlightEl = highlightedElements[0];
         if (highlightEl) {
             highlightEl.scrollIntoView({
@@ -916,11 +912,11 @@
                 inline: 'nearest'
             });
         }
-        
+
         const currentNum = atSearchState.currentIndex + 1;
         const totalNum = atSearchState.matches.length;
         showToast(`✅ 找到 (${currentNum}/${totalNum})`);
-        
+
         if (type === 'at') {
             atLogger.success(`找到 @ 标记 (${currentNum}/${totalNum})`);
         } else {

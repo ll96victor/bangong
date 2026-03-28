@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         客诉助手（原客服信息提取）
 // @namespace    http://tampermonkey.net/
-// @version      4.0.1
+// @version      4.0.0
 // @description  AiHelp Ticket（客诉）页面效率工具：复制URL@客服、改分组、打标签、翻译、AI辅助、日志面板，并支持整排按钮拖拽记忆。
-
 // @author       Front-end Expert
 // @match        https://ml-panel.aihelp.net/*
 // @match        https://ml-panel.aihelp.net.cn/*
@@ -24,11 +23,6 @@
 
 /**
  * 更新日志：
- * v4.0.1 (2026-03-28)
- * - 优化：翻译面板支持直接粘贴自定义回复，再翻译为客诉目标语种
- * - 优化：AI 输出固定附带中文说明，便于理解小语种结果
- * - 优化：AI 面板新增“待优化回复”输入区，支持粘贴自定义回复后优化
- *
  * v4.0.0 (2026-03-28)
  * - 重命名：脚本名称更新为“客诉助手（原客服信息提取）”
  * - 新增：🌐 翻译按钮，自动识别语种并支持手动切换目标语种
@@ -37,7 +31,6 @@
  * - 新增：油猴菜单配置 GLM / MiMo 的 Key、Endpoint、模型与默认目标语种
  * - 优化：拖动任意一个按钮，整排按钮一起移动并自动记住位置
  *
-
  * v3.0.6 (2026-03-20)
  * - 优化：采用快速响应+重试机制，而非长时间等待
  * - 优化：等待时间恢复快速响应（弹窗300ms、下拉框200ms、输入100ms）
@@ -963,59 +956,50 @@
         }).join('\n\n');
     }
 
-    function buildAiMessages({ mode, targetLang, contextText, latestUserMessage, latestAgentMessage, customReplyText }) {
+    function buildAiMessages({ mode, targetLang, contextText, latestUserMessage, latestAgentMessage }) {
         const targetLanguageName = getLanguageLabel(targetLang);
-        const normalizedCustomReply = normalizeWhitespace(customReplyText);
-        const effectiveReply = normalizedCustomReply || normalizeWhitespace(latestAgentMessage);
-        const safeContextText = contextText || '暂无对话上下文';
         const systemPrompt = [
             '你是一名资深游戏客诉专家。',
             '请基于用户意图、上下文对话和当前客服回复，输出稳定、专业、可直接使用的结果。',
             '禁止夸大承诺，禁止编造未确认的信息，语气要清晰、克制、客服可直接复制。',
-            `面向用户的话术必须使用：${targetLanguageName}。`,
-            '你必须额外提供中文说明，帮助客服理解小语种内容；中文说明仅供内部理解，不要混入面向用户的话术。',
+            `最终输出语言必须是：${targetLanguageName}。`,
             '请使用 Markdown 输出。'
         ].join('\n');
 
         const modePrompt = mode === 'optimize'
             ? [
                 '任务模式：优化当前客服回复。',
-                `待优化回复：\n${effectiveReply || '暂无待优化回复，请基于上下文补出一版更稳妥的回复。'}`,
+                `当前客服回复：\n${latestAgentMessage || '暂无当前客服回复，请基于上下文补出一版更稳妥的回复。'}`,
                 '输出格式：',
-                '## 用户意图（中文）',
-                `## 面向用户的优化后回复（${targetLanguageName}）`,
-                '## 中文说明'
+                '## 用户意图',
+                '## 优化后回复',
+                '## 优化说明'
             ].join('\n')
             : [
                 '任务模式：推荐可直接发送的客服回复。',
                 '输出格式：',
-                '## 用户意图（中文）',
-                `## 推荐回复一（${targetLanguageName}）`,
-                `## 推荐回复二（${targetLanguageName}）`,
-                `## 推荐回复三（${targetLanguageName}）`,
-                '## 中文说明'
+                '## 用户意图',
+                '## 推荐回复一',
+                '## 推荐回复二',
+                '## 推荐回复三'
             ].join('\n');
 
         const userPrompt = [
             modePrompt,
             '',
             '对话上下文：',
-            safeContextText,
+            contextText,
             '',
             `最新用户消息：\n${latestUserMessage || '未提取到最新用户消息'}`,
             '',
-            `当前客服回复：\n${latestAgentMessage || '未提取到当前客服回复'}`,
-            normalizedCustomReply ? `\n用户手动粘贴的回复草稿：\n${normalizedCustomReply}` : '',
-            '',
-            '注意：如果上下文信息不足，请给出保守、稳妥、不越权的回复。面向用户的话术只能使用目标语种，中文说明用于客服自己理解。'
-        ].filter(Boolean).join('\n');
+            '注意：如果上下文信息不足，请给出保守、稳妥、不越权的回复。'
+        ].join('\n');
 
         return [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt }
         ];
     }
-
 
     function extractAiTextFromResponse(result) {
         if (result?.error?.message) {
@@ -1118,70 +1102,45 @@
         throw new Error(errors.join('；'));
     }
 
-    async function runTranslatePanel(body, sourceText, targetLang, detectedLangHint = '', referenceTargetLang = '') {
-        const normalizedSource = normalizeWhitespace(sourceText);
-        if (!normalizedSource) {
-            renderTranslatePanel(body, {
-                sourceText: '',
-                targetLang,
-                detectedLang: detectedLangHint,
-                translatedText: '',
-                loading: false,
-                status: '请先粘贴或保留待翻译内容后再翻译。',
-                error: true,
-                referenceTargetLang
-            });
-            return;
-        }
-
+    async function runTranslatePanel(body, sourceText, targetLang, detectedLangHint = '') {
         renderTranslatePanel(body, {
-            sourceText: normalizedSource,
+            sourceText,
             targetLang,
             detectedLang: detectedLangHint,
             translatedText: '',
             loading: true,
-            status: '翻译中，请稍候...',
-            referenceTargetLang
+            status: '翻译中，请稍候...'
         });
 
         try {
-            const result = await translateWithAutoDetection(normalizedSource, targetLang, detectedLangHint);
+            const result = await translateWithAutoDetection(sourceText, targetLang, detectedLangHint);
             renderTranslatePanel(body, {
-                sourceText: normalizedSource,
+                sourceText,
                 targetLang,
                 detectedLang: result.detectedLang,
                 translatedText: result.translatedText,
                 loading: false,
-                status: result.skipped ? '检测到待翻译内容已是目标语种，已直接展示原文。' : '翻译完成，可直接复制使用。',
-                referenceTargetLang
+                status: result.skipped ? '检测到原文已是目标语种，已直接展示原文。' : '翻译完成，可直接复制使用。'
             });
         } catch (e) {
             logError('翻译失败:', e);
             renderTranslatePanel(body, {
-                sourceText: normalizedSource,
+                sourceText,
                 targetLang,
                 detectedLang: detectedLangHint,
                 translatedText: '',
                 loading: false,
                 status: `翻译失败：${e.message}`,
-                error: true,
-                referenceTargetLang
+                error: true
             });
         }
     }
 
     function renderTranslatePanel(body, panelState) {
-        const detectedLabel = panelState.detectedLang ? getLanguageLabel(panelState.detectedLang) : '待翻译后识别';
-        const targetHint = panelState.referenceTargetLang
-            ? `已按客诉用户语种预选目标语种：${getLanguageLabel(panelState.referenceTargetLang)}，你也可以手动修改。`
-            : '默认会翻译你准备发送的内容；也可以直接粘贴你自己的回复后再翻译。';
+        const detectedLabel = panelState.detectedLang ? getLanguageLabel(panelState.detectedLang) : '检测中...';
         const statusClass = panelState.error ? 'ai-panel-status ai-panel-status-error' : 'ai-panel-status';
 
         body.innerHTML = `
-            <div class="ai-panel-field">
-                <div class="ai-panel-label">使用说明</div>
-                <div class="ai-panel-note">${escapeHtml(targetHint)}</div>
-            </div>
             <div class="ai-panel-field">
                 <div class="ai-panel-label">检测语种</div>
                 <div class="ai-panel-note">${escapeHtml(detectedLabel)}</div>
@@ -1193,8 +1152,8 @@
                 </select>
             </div>
             <div class="ai-panel-field">
-                <div class="ai-panel-label">待翻译内容（可粘贴你自己的回复）</div>
-                <textarea class="ai-panel-textarea" id="ai-translate-source-input" placeholder="默认带出客服回复；也可以直接粘贴你自己要发送的内容">${escapeHtml(panelState.sourceText || '')}</textarea>
+                <div class="ai-panel-label">原文</div>
+                <pre class="ai-panel-pre">${escapeHtml(panelState.sourceText || '未提取到消息')}</pre>
             </div>
             <div class="ai-panel-field">
                 <div class="ai-panel-label">译文</div>
@@ -1207,21 +1166,19 @@
             <div class="${statusClass}">${escapeHtml(panelState.status || '')}</div>
         `;
 
-        const sourceInput = body.querySelector('#ai-translate-source-input');
         const targetSelect = body.querySelector('#ai-translate-target-select');
         const refreshBtn = body.querySelector('#ai-translate-refresh-btn');
         const copyBtn = body.querySelector('#ai-translate-copy-btn');
-        const getSourceText = () => normalizeWhitespace(sourceInput ? sourceInput.value : panelState.sourceText || '');
 
         targetSelect.addEventListener('change', () => {
             const nextLang = normalizeLanguageCode(targetSelect.value) || CONFIG.defaultTargetLang;
             setDefaultTargetLang(nextLang);
-            runTranslatePanel(body, getSourceText(), nextLang, '', panelState.referenceTargetLang || '');
+            runTranslatePanel(body, panelState.sourceText, nextLang, panelState.detectedLang || '');
         });
 
         refreshBtn.addEventListener('click', () => {
             const nextLang = normalizeLanguageCode(targetSelect.value) || CONFIG.defaultTargetLang;
-            runTranslatePanel(body, getSourceText(), nextLang, '', panelState.referenceTargetLang || '');
+            runTranslatePanel(body, panelState.sourceText, nextLang, panelState.detectedLang || '');
         });
 
         if (copyBtn) {
@@ -1232,54 +1189,20 @@
     }
 
     async function handleTranslateAction(button) {
-        const latestUserMessage = extractLatestUserMessage();
-        const latestAgentMessage = extractLatestAgentMessage();
-        let referenceTargetLang = '';
-
-        try {
-            referenceTargetLang = latestUserMessage ? await detectLanguage(latestUserMessage) : '';
-        } catch (e) {
-            logWarn('客诉目标语种识别失败，将使用默认目标语种:', e.message);
+        const sourceText = extractLatestUserMessage() || extractLatestAgentMessage();
+        if (!sourceText) {
+            logWarn('翻译失败：未提取到可翻译的消息');
+            showFeedback(button, '✗', 'error');
+            return;
         }
 
         const panel = ensurePanel(PANEL_IDS.translate, '翻译助手');
-        const initialTargetLang = referenceTargetLang ? getPreferredTargetLanguage(referenceTargetLang) : getDefaultTargetLang();
-        const initialSourceText = latestAgentMessage || '';
+        const initialTargetLang = getDefaultTargetLang();
         showFeedback(button, '✓', 'success');
-
-        if (initialSourceText) {
-            await runTranslatePanel(panel.body, initialSourceText, initialTargetLang, '', referenceTargetLang);
-            return;
-        }
-
-        renderTranslatePanel(panel.body, {
-            sourceText: '',
-            targetLang: initialTargetLang,
-            detectedLang: '',
-            translatedText: '',
-            loading: false,
-            status: '未提取到客服回复，请直接粘贴你自己的回复内容后再翻译。',
-            error: false,
-            referenceTargetLang
-        });
+        await runTranslatePanel(panel.body, sourceText, initialTargetLang, '');
     }
 
-
     async function runAiPanel(body, panelState) {
-        panelState.customReplyText = normalizeWhitespace(panelState.customReplyText);
-        const hasContext = Array.isArray(panelState.context) && panelState.context.some(item => normalizeWhitespace(item.text));
-        const hasUserMessage = Boolean(normalizeWhitespace(panelState.latestUserMessage));
-        const hasReplyText = Boolean(panelState.customReplyText || normalizeWhitespace(panelState.latestAgentMessage));
-
-        if (!hasContext && !hasUserMessage && !hasReplyText) {
-            panelState.loading = false;
-            panelState.resultText = '';
-            panelState.status = '请先粘贴待优化回复，或确保页面里已有对话内容。';
-            panelState.error = true;
-            renderAiPanel(body, panelState);
-            return;
-        }
-
         panelState.loading = true;
         panelState.resultText = panelState.resultText || '';
         panelState.status = 'AI 生成中，请稍候...';
@@ -1292,13 +1215,12 @@
                 targetLang: panelState.targetLang,
                 contextText: buildContextText(panelState.context),
                 latestUserMessage: panelState.latestUserMessage,
-                latestAgentMessage: panelState.latestAgentMessage,
-                customReplyText: panelState.customReplyText
+                latestAgentMessage: panelState.latestAgentMessage
             });
             const result = await callAiWithFallback(panelState.provider, messages);
             panelState.loading = false;
             panelState.resultText = result.content;
-            panelState.status = `生成完成，实际使用：${result.provider}。结果已附中文说明，方便查看。`;
+            panelState.status = `生成完成，实际使用：${result.provider}`;
             panelState.error = false;
             renderAiPanel(body, panelState);
         } catch (e) {
@@ -1315,10 +1237,6 @@
         const statusClass = panelState.error ? 'ai-panel-status ai-panel-status-error' : 'ai-panel-status';
 
         body.innerHTML = `
-            <div class="ai-panel-field">
-                <div class="ai-panel-label">使用说明</div>
-                <div class="ai-panel-note">AI 会输出面向用户的话术，并额外附上中文说明，方便你看懂小语种内容。若要优化你自己写的回复，请把内容粘贴到“待优化回复”里再生成。</div>
-            </div>
             <div class="ai-panel-grid">
                 <div class="ai-panel-field">
                     <div class="ai-panel-label">优先方案</div>
@@ -1346,15 +1264,11 @@
                 <pre class="ai-panel-pre">${escapeHtml(panelState.latestUserMessage || '未提取到')}</pre>
             </div>
             <div class="ai-panel-field">
-                <div class="ai-panel-label">提取到的当前客服回复</div>
-                <pre class="ai-panel-pre">${escapeHtml(panelState.latestAgentMessage || '未提取到，AI 会基于上下文或你粘贴的回复给出建议')}</pre>
+                <div class="ai-panel-label">当前客服回复</div>
+                <pre class="ai-panel-pre">${escapeHtml(panelState.latestAgentMessage || '未提取到，AI 会基于上下文直接给出建议')}</pre>
             </div>
             <div class="ai-panel-field">
-                <div class="ai-panel-label">待优化回复（可粘贴你自己的回复）</div>
-                <textarea class="ai-panel-textarea" id="ai-custom-reply-input" placeholder="需要优化你自己写的回复时，直接粘贴到这里；留空则使用上方提取到的客服回复">${escapeHtml(panelState.customReplyText || '')}</textarea>
-            </div>
-            <div class="ai-panel-field">
-                <div class="ai-panel-label">AI 输出（含中文说明）</div>
+                <div class="ai-panel-label">AI 输出</div>
                 <pre class="ai-panel-pre ai-panel-pre-large">${escapeHtml(panelState.resultText || (panelState.loading ? 'AI 生成中...' : '点击“开始生成”后显示结果'))}</pre>
             </div>
             <div class="ai-panel-actions">
@@ -1367,7 +1281,6 @@
         const providerSelect = body.querySelector('#ai-provider-select');
         const modeSelect = body.querySelector('#ai-mode-select');
         const targetSelect = body.querySelector('#ai-target-select');
-        const customReplyInput = body.querySelector('#ai-custom-reply-input');
         const generateBtn = body.querySelector('#ai-generate-btn');
         const copyBtn = body.querySelector('#ai-copy-btn');
 
@@ -1381,13 +1294,7 @@
             panelState.targetLang = normalizeLanguageCode(targetSelect.value) || CONFIG.defaultTargetLang;
             setDefaultTargetLang(panelState.targetLang);
         });
-        if (customReplyInput) {
-            customReplyInput.addEventListener('input', () => {
-                panelState.customReplyText = customReplyInput.value;
-            });
-        }
         generateBtn.addEventListener('click', () => {
-            panelState.customReplyText = customReplyInput ? customReplyInput.value : panelState.customReplyText;
             runAiPanel(body, panelState);
         });
         if (copyBtn) {
@@ -1400,7 +1307,9 @@
     async function handleAiAction(button) {
         const context = extractChatContext(CONFIG.maxContextMessages);
         if (!context.length) {
-            logWarn('AI 辅助未提取到完整对话上下文，将允许手动粘贴回复继续处理');
+            logWarn('AI 辅助失败：未提取到对话上下文');
+            showFeedback(button, '✗', 'error');
+            return;
         }
 
         const latestUserMessage = extractLatestUserMessage();
@@ -1421,11 +1330,10 @@
             targetLang: getPreferredTargetLanguage(detectedLang),
             latestUserMessage,
             latestAgentMessage,
-            customReplyText: latestAgentMessage || '',
             context,
             detectedLang,
             resultText: '',
-            status: detectedLang ? `检测到用户语种：${getLanguageLabel(detectedLang)}；AI 输出会附中文说明。` : 'AI 输出会附中文说明。',
+            status: detectedLang ? `检测到用户语种：${getLanguageLabel(detectedLang)}` : '',
             loading: false,
             error: false
         };
@@ -1433,7 +1341,6 @@
         showFeedback(button, '✓', 'success');
         await runAiPanel(panel.body, panelState);
     }
-
 
     function renderLogPanel(body) {
         const logItems = STATE.logs.slice().reverse().map(entry => `
@@ -1675,7 +1582,6 @@
         }
 
         .ai-panel-select,
-        .ai-panel-textarea,
         .ai-panel-btn {
             border-radius: 10px;
             border: 1px solid rgba(148, 163, 184, 0.26);
@@ -1685,18 +1591,9 @@
             font-size: 13px;
         }
 
-        .ai-panel-select,
-        .ai-panel-textarea {
+        .ai-panel-select {
             outline: none;
         }
-
-        .ai-panel-textarea {
-            min-height: 96px;
-            resize: vertical;
-            line-height: 1.6;
-            font-family: inherit;
-        }
-
 
         .ai-panel-btn {
             cursor: pointer;
