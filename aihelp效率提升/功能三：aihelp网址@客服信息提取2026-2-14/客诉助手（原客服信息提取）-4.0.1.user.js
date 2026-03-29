@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         客诉助手（原客服信息提取）
 // @namespace    http://tampermonkey.net/
-// @version      4.1.0
+// @version      4.0.1
 // @description  AiHelp Ticket（客诉）页面效率工具：复制URL@客服、改分组、打标签、翻译、AI辅助、日志面板，并支持整排按钮拖拽记忆。
 
 // @author       Front-end Expert
@@ -19,17 +19,11 @@
 // @grant        GM_getValue
 // @connect      translate.googleapis.com
 // @connect      open.bigmodel.cn
-// @connect      api.xiaomimimo.com
 // @connect      *
 // ==/UserScript==
 
 /**
  * 更新日志：
- * v4.1.0 (2026-03-29)
- * - 优化：翻译面板默认翻译客服最后回复之后用户回复的消息（超500字符不自动翻译）
- * - 新增：浮动面板（翻译/AI/日志）支持通过标题栏拖动，并记住上次位置
- * - 修复：显式声明 @connect api.xiaomimimo.com，兼容更多油猴版本
- *
  * v4.0.1 (2026-03-28)
  * - 优化：翻译面板支持直接粘贴自定义回复，再翻译为客诉目标语种
  * - 优化：AI 输出固定附带中文说明，便于理解小语种结果
@@ -99,7 +93,6 @@
 
     const STORAGE_KEYS = {
         buttonPosition: 'ai-btn-container-position',
-        panelPositions: 'ai-panel-positions-v1',
         defaultTargetLang: 'aihelp_ticket_default_target_lang_v1',
         glmApiKey: 'aihelp_ticket_glm_api_key_v1',
         glmEndpoint: 'aihelp_ticket_glm_endpoint_v1',
@@ -544,26 +537,6 @@
         return '';
     }
 
-    // 提取客服最后一次回复之后、用户回复的所有消息（用于翻译默认内容）
-    function extractUserMessagesAfterLastAgent() {
-        const allNodes = Array.from(getChatRoot().querySelectorAll('.msg.msg-left, [data-testid="agentMessageItem"].msg.msg-right'));
-        if (!allNodes.length) return '';
-        let lastAgentIdx = -1;
-        for (let i = allNodes.length - 1; i >= 0; i--) {
-            if (allNodes[i].matches('[data-testid="agentMessageItem"].msg.msg-right')) {
-                lastAgentIdx = i;
-                break;
-            }
-        }
-        const userNodes = allNodes.slice(lastAgentIdx + 1).filter(n => n.matches('.msg.msg-left'));
-        if (!userNodes.length) return '';
-        const texts = userNodes.map(n => extractTextFromMessage(n)).filter(Boolean);
-        if (!texts.length) return '';
-        const combined = texts.join('\n');
-        if (combined.length > 500) return '';
-        return combined;
-    }
-
     function extractChatContext(limit = CONFIG.maxContextMessages) {
         const nodes = Array.from(getChatRoot().querySelectorAll('.msg.msg-left, [data-testid="agentMessageItem"].msg.msg-right'));
         const context = [];
@@ -932,82 +905,6 @@
         document.querySelectorAll('.ai-delayed-tooltip.visible').forEach(el => el.classList.remove('visible'));
     }
 
-    // 面板位置存取辅助
-    function getPanelPositions() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEYS.panelPositions)) || {}; } catch { return {}; }
-    }
-    function savePanelPosition(panelId, x, y) {
-        const positions = getPanelPositions();
-        positions[panelId] = { x, y };
-        localStorage.setItem(STORAGE_KEYS.panelPositions, JSON.stringify(positions));
-    }
-    function restorePanelPosition(panelEl, panelId) {
-        const pos = getPanelPositions()[panelId];
-        if (!pos) return;
-        const maxX = window.innerWidth - Math.min(panelEl.offsetWidth || 420, window.innerWidth);
-        const maxY = window.innerHeight - Math.min(panelEl.offsetHeight || 200, window.innerHeight);
-        const safeX = Math.max(0, Math.min(pos.x, maxX));
-        const safeY = Math.max(0, Math.min(pos.y, maxY));
-        panelEl.style.top = `${safeY}px`;
-        panelEl.style.left = `${safeX}px`;
-        panelEl.style.right = 'auto';
-    }
-
-    // 面板拖拽（通过 header 拖动整个面板）
-    function setupPanelDraggable(panelEl, panelId) {
-        const header = panelEl.querySelector('.ai-panel-header');
-        if (!header) return;
-        let dragState = null;
-
-        const onMouseMove = (e) => {
-            if (!dragState) return;
-            const dx = e.clientX - dragState.startX;
-            const dy = e.clientY - dragState.startY;
-            if (!dragState.isDragging && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
-                dragState.isDragging = true;
-                header.classList.add('ai-panel-dragging');
-            }
-            if (!dragState.isDragging) return;
-            let newX = e.clientX - dragState.offsetX;
-            let newY = e.clientY - dragState.offsetY;
-            const pw = panelEl.offsetWidth;
-            const ph = panelEl.offsetHeight;
-            newX = Math.max(0, Math.min(newX, window.innerWidth - pw));
-            newY = Math.max(0, Math.min(newY, window.innerHeight - ph));
-            panelEl.style.left = `${newX}px`;
-            panelEl.style.top = `${newY}px`;
-            panelEl.style.right = 'auto';
-            e.preventDefault();
-        };
-
-        const onMouseUp = () => {
-            if (!dragState) return;
-            const wasDragging = dragState.isDragging;
-            dragState = null;
-            header.classList.remove('ai-panel-dragging');
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-            if (wasDragging) {
-                savePanelPosition(panelId, panelEl.offsetLeft, panelEl.offsetTop);
-            }
-        };
-
-        header.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return;
-            if (e.target.closest('.ai-panel-close')) return;
-            const rect = panelEl.getBoundingClientRect();
-            dragState = {
-                startX: e.clientX,
-                startY: e.clientY,
-                offsetX: e.clientX - rect.left,
-                offsetY: e.clientY - rect.top,
-                isDragging: false
-            };
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-        });
-    }
-
     function closePanel(panelId) {
         const panel = STATE.panels[panelId];
         if (!panel) return;
@@ -1022,7 +919,7 @@
 
     function closeOtherPanels(exceptId = '') {
         Object.keys(STATE.panels).forEach(id => {
-            if (id !== exceptId && id !== PANEL_IDS.log) {
+            if (id !== exceptId) {
                 closePanel(id);
             }
         });
@@ -1049,9 +946,6 @@
 
         panel.querySelector('.ai-panel-close').addEventListener('click', () => closePanel(panelId));
         document.body.appendChild(panel);
-
-        restorePanelPosition(panel, panelId);
-        setupPanelDraggable(panel, panelId);
 
         const payload = {
             element: panel,
@@ -1339,6 +1233,7 @@
 
     async function handleTranslateAction(button) {
         const latestUserMessage = extractLatestUserMessage();
+        const latestAgentMessage = extractLatestAgentMessage();
         let referenceTargetLang = '';
 
         try {
@@ -1349,10 +1244,7 @@
 
         const panel = ensurePanel(PANEL_IDS.translate, '翻译助手');
         const initialTargetLang = referenceTargetLang ? getPreferredTargetLanguage(referenceTargetLang) : getDefaultTargetLang();
-
-        // 默认翻译客服最后回复之后、用户回复的内容（超500字符不自动翻译）
-        const userMessagesAfterAgent = extractUserMessagesAfterLastAgent();
-        const initialSourceText = userMessagesAfterAgent || '';
+        const initialSourceText = latestAgentMessage || '';
         showFeedback(button, '✓', 'success');
 
         if (initialSourceText) {
@@ -1360,15 +1252,13 @@
             return;
         }
 
-        const noAutoReason = '未提取到用户最新回复（可能无新消息或超过500字符），请直接粘贴内容后翻译。';
-
         renderTranslatePanel(panel.body, {
             sourceText: '',
             targetLang: initialTargetLang,
             detectedLang: '',
             translatedText: '',
             loading: false,
-            status: noAutoReason,
+            status: '未提取到客服回复，请直接粘贴你自己的回复内容后再翻译。',
             error: false,
             referenceTargetLang
         });
@@ -1586,25 +1476,8 @@
             showFeedback(button, '✓', 'success');
             return;
         }
-        // 日志面板独立管理，不走 ensurePanel 以避免关闭翻译/AI面板
-        const panelId = PANEL_IDS.log;
-        const panel = document.createElement('div');
-        panel.id = panelId;
-        panel.className = 'ai-floating-panel';
-        panel.innerHTML = `
-            <div class="ai-panel-header">
-                <div class="ai-panel-title">日志面板</div>
-                <button type="button" class="ai-panel-close" aria-label="关闭">×</button>
-            </div>
-            <div class="ai-panel-body"></div>
-        `;
-        panel.querySelector('.ai-panel-close').addEventListener('click', () => closePanel(panelId));
-        document.body.appendChild(panel);
-        restorePanelPosition(panel, panelId);
-        setupPanelDraggable(panel, panelId);
-        const payload = { element: panel, body: panel.querySelector('.ai-panel-body') };
-        STATE.panels[panelId] = payload;
-        renderLogPanel(payload.body);
+        const panel = ensurePanel(PANEL_IDS.log, '日志面板');
+        renderLogPanel(panel.body);
         showFeedback(button, '✓', 'success');
     }
 
@@ -1758,12 +1631,6 @@
             padding: 14px 16px;
             border-bottom: 1px solid rgba(148, 163, 184, 0.18);
             background: rgba(30, 41, 59, 0.95);
-            cursor: grab;
-            user-select: none;
-        }
-
-        .ai-panel-header.ai-panel-dragging {
-            cursor: grabbing;
         }
 
         .ai-panel-title {
